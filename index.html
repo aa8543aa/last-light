@@ -43,18 +43,12 @@
   .track .home { position: absolute; right: -3px; top: -3px; width: 6px; height: 6px; border-radius: 50%; background: var(--warm); box-shadow: 0 0 10px 3px rgba(255,170,90,.75); }
   .ends { display: flex; justify-content: space-between; }
   #stats { justify-self: end; display: flex; gap: clamp(14px, 2vw, 26px); text-align: right; }
-  #axe { grid-row: 3; grid-column: 1; align-self: end; display: flex; align-items: center; gap: 10px; }
-  #axe svg { width: 34px; height: 34px; }
-  .pips { display: flex; gap: 3px; margin-top: 5px; }
-  .pips i { width: 16px; height: 4px; background: var(--ink); }
-  .pips i.off { background: var(--line); }
   #keys { grid-row: 3; grid-column: 3; align-self: end; justify-self: end; display: flex; gap: 14px; font-size: 12px; color: var(--dim); white-space: nowrap; }
   kbd { font: inherit; color: var(--ink); border: 1px solid var(--line); border-radius: 3px; padding: 1px 6px; margin-right: 4px; background: rgba(5,10,20,.3); }
   @media (max-width: 640px) {
     #hud { grid-template: auto auto 1fr auto / 1fr 1fr; }
     #route { grid-column: 1 / -1; grid-row: 2; width: 100%; }
     #stats { grid-column: 2; grid-row: 1; }
-    #axe { grid-row: 4; }
     #keys { grid-row: 4; grid-column: 2; flex-direction: column; align-items: flex-end; gap: 6px; }
   }
 </style>
@@ -78,12 +72,6 @@
     <div><div class="label">시간</div><div class="big" id="vTime">00:00</div></div>
     <div><div class="label">코인</div><div class="big" id="vCoin">0</div></div>
     <div><div class="label">점수</div><div class="big" id="vScore">0</div></div>
-  </section>
-  <section id="axe" aria-label="무기">
-    <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M12 12 25 28"/><path d="M8 4c5 0 10 2 12 6-3 1-5 3-6 6C9 15 6 10 8 4Z" fill="currentColor" fill-opacity=".85"/>
-    </svg>
-    <div><div class="label">도끼</div><div class="pips"><i class="off"></i><i class="off"></i><i class="off"></i></div></div>
   </section>
   <section id="keys" aria-label="조작법">
     <span><kbd>A</kbd><kbd>D</kbd>또는 <kbd>←</kbd><kbd>→</kbd>좌우 이동</span>
@@ -746,6 +734,7 @@ const updateRun = dt => {
   updateObstacles();
   updateBeast();
   updateKits(dt);
+  updateCoins();
   if (S.z >= TOTAL && S.mode === 'run') finish(true);
 };
 
@@ -935,6 +924,57 @@ const updateBeast = () => {
   }
   if (b.z < S.z - 7) { b.b.root.setEnabled(false); beast = null; }
 };
+
+// 코인: 길을 따라 줄지어 놓이고, 장애물과 겹치면 건너뛴다.
+const coinMesh = B.MeshBuilder.CreateCylinder('coin', { diameter: .58, height: .07, tessellation: 24 }, scene);
+const coinMat = new B.StandardMaterial('coinM', scene);
+coinMat.diffuseColor = new B.Color3(.95, .68, .16); coinMat.emissiveColor = new B.Color3(.5, .32, .06);
+coinMat.specularColor = new B.Color3(1, .85, .5); coinMat.specularPower = 48;
+coinMesh.material = coinMat;
+const COIN_MAX = 60;
+coinMesh.buf = new Float32Array(COIN_MAX * 16);
+coinMesh.thinInstanceSetBuffer('matrix', coinMesh.buf, 16, false);
+coinMesh.thinInstanceCount = 0;
+coinMesh.alwaysSelectAsActiveMesh = true;
+const coins = [];
+let nextCoin = 40;
+const coinBlocked = (x, z) => obs.some(o => o.type === 'log' ? Math.abs(o.z - z) < 2.5 : Math.abs(o.z - z) < 2.5 && Math.abs(o.x - x) < o.r + .8);
+const spawnCoins = () => {
+  while (nextCoin < S.z + 200 && coins.length < COIN_MAX - 10) {
+    const start = clearOfGap(nextCoin, 14, 8), n = 5 + Math.floor(rnd(0, 5));
+    let u = rnd(-.75, .75);
+    const drift = rnd(-.09, .09);
+    for (let i = 0; i < n; i++) {
+      const z = start + i * 5;
+      if (gapAt(z)) continue;
+      const half = pathHalf(z) - .9, x = pathX(z) + clamp(u, -1, 1) * half;
+      u += drift;
+      if (!coinBlocked(x, z)) coins.push({ x, z });
+    }
+    nextCoin = start + n * 5 + rnd(45, 90);
+  }
+};
+const updateCoins = () => {
+  spawnCoins();
+  const px = pathX(S.z) + S.u, q = B.Quaternion.RotationYawPitchRoll(clock * 3, Math.PI / 2, 0), one = new B.Vector3(1, 1, 1);
+  let n = 0;
+  for (let i = coins.length - 1; i >= 0; i--) {
+    const c = coins[i];
+    if (c.z < S.z - 3) { coins.splice(i, 1); continue; }
+    if (Math.abs(c.z - S.z) < 1.5 && Math.abs(c.x - px) < 1 && S.y < 1.7) {
+      S.coins++;
+      coins.splice(i, 1);
+      continue;
+    }
+    if (n < COIN_MAX) {
+      B.Matrix.Compose(one, q, new B.Vector3(c.x, groundY(c.x, c.z) + .8, c.z)).copyToArray(coinMesh.buf, n * 16);
+      n++;
+    }
+  }
+  coinMesh.thinInstanceBufferUpdated('matrix');
+  coinMesh.thinInstanceCount = n;
+};
+S.coinList = coins;
 
 // 체력 회복 키트: 길 위에 간간이 놓인다.
 const kitMat = lit('kitM', .82, .84, .86, .5), crossMat = new B.StandardMaterial('crossM', scene);

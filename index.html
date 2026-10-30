@@ -1242,17 +1242,17 @@ const updateBody = (dt, time) => {
     const pump = (S.speed || SPEED) / SPEED * 4.2;
     S.pump = (S.pump || 0) + pump * dt;
     arms.forEach((a, i) => {
-      // 지팡이 찍기: 앞으로 뻗은 손을 천천히 뒤로 끌어온 뒤, 살짝 들어 빠르게 앞으로 되돌린다.
+      // 어깨를 축으로 팔 전체가 큰 호를 그린다. 앞 위에서 찍어 뒤로 끌고, 다시 앞으로 올린다.
       const phase = ((S.pump + i * Math.PI) / (Math.PI * 2)) % 1;
-      const pulling = phase < .62;
-      const u = pulling ? phase / .62 : (phase - .62) / .38;
-      const reach = pulling ? .26 - smooth(0, 1, u) * .58 : -.32 + smooth(0, 1, u) * .58;
-      const lift = pulling ? -.02 * Math.sin(u * Math.PI) : .075 * Math.sin(u * Math.PI);
-      setPart(a, bodyPose.arm, 1, 0);
-      a.mesh.position.z += reach;
-      a.mesh.position.y += reach * .24 + lift;
-      a.mesh.position.x += -S.v * .009 - reach * a.side * .08;
-      if (poles[i]) poles[i].rotation.x = -.5 + (pulling ? reach * .95 : -.3 + reach * .35);
+      const pulling = phase < .58;
+      const u = pulling ? phase / .58 : (phase - .58) / .42;
+      const swing = pulling ? 1.62 - smooth(0, 1, u) * 2.15 : -.53 + smooth(0, 1, u) * 2.15;
+      const a0 = swing, dy = Math.cos(a0), dz = Math.sin(a0), LEN = .78;
+      const hx = a.side * (.31 + Math.sin(Math.max(0, swing)) * .03) - S.v * .009;
+      const hy = -.27 - dy * LEN, hz = .04 + dz * LEN;
+      a.mesh.position.set(hx, hy - dy * .26, hz - dz * .26);
+      a.mesh.rotation.set(a0, 0, -a.side * .06);
+      if (poles[i]) poles[i].rotation.x = .3 - a0;
     });
     legs.forEach(l => setPart(l, POSES.hideLeg, 1, 0));
     skis.forEach(sk => {

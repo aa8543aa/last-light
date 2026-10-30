@@ -10,7 +10,7 @@
 
 - 실행 방법: [GitHub Pages에서 플레이](https://aa8543aa.github.io/realistic-combat-web/) 또는 `index.html`을 브라우저로 열기 (인터넷 연결 필요)
 - 조작법: `A`/`D` 또는 `←`/`→`로 좌우 이동, `Shift` 부스트, `Space` 점프, 마우스로 주변 보기 (화면 클릭 시 포인터 잠금)
-- 에셋 출처: 하늘은 [Milky Way at Chajnantor](https://commons.wikimedia.org/wiki/File:Milky_Way_at_Chajnantor_(uhd_9428_panorama_eq).jpg) (Y. Beletsky (LCO)/ESO, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0)), 산은 [Kanchenjungha-Panorama](https://commons.wikimedia.org/wiki/File:Kanchenjungha-Panorama.jpg) (Sujay25, [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0))를 사용함. 하늘은 위쪽만 잘랐고, 산은 하늘을 지우고 밤 색으로 보정함. 나무와 바위는 코드로 생성함
+- 에셋 출처: 하늘은 [Milky Way at Chajnantor](https://commons.wikimedia.org/wiki/File:Milky_Way_at_Chajnantor_(uhd_9428_panorama_eq).jpg) (Y. Beletsky (LCO)/ESO, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0)), 산은 [Kanchenjungha-Panorama](https://commons.wikimedia.org/wiki/File:Kanchenjungha-Panorama.jpg) (Sujay25, [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0))를 사용함. 하늘은 위쪽만 잘랐고, 산은 하늘을 지우고 밤 색으로 보정함. 눈 지면은 [Poly Haven Snow 02](https://polyhaven.com/a/snow_02) (Rob Tuytel, CC0). 나무와 바위는 코드로 생성함
 
 ## 2. PRD
 
@@ -145,6 +145,10 @@
 | 2026-10-30 | 수정 | 곰과 늑대가 플레이어를 따라옴 | 길 위 한 곳에 서 있어 옆으로 피하거나 뛰어넘음 | 재테스트에서도 피할 수 없었음 |
 | 2026-10-30 | 수정 | 게임 제목 불빛을 향해 | 마지막 불빛 | 제목 변경 요청 |
 | 2026-10-30 | 수정 | 평지에 그린 검은 크레바스 | 지형을 약 70m 깎은 낭떠러지, 빠지면 추락 장면 후 건너편에서 재개 | 빈 공간이 사실적이지 않았음 |
+| 2026-10-30 | 수정 | 코드로 만든 눈 지면과 빠르게 스치는 눈 | 실제 눈 촬영 재질과 천천히 내리는 큰 눈송이 추가 | 눈이 내리는 느낌이 약하고 지면이 평평해 보임 |
+| 2026-10-30 | 추가 | 상고대 활엽수만 있는 숲 | 눈 쌓인 가문비나무를 섞은 숲 | 겨울 산의 실제 숲 구성에 가깝게 함 |
+| 2026-10-30 | 수정 | 18m/s, 5.4km, 틈 19m | 27m/s, 8.1km, 틈 24m, 장애물 간격 1.5배 | 플레이 테스트에서 속도가 답답함. 약 5분 길이와 부스트 필수 구간은 유지 |
+| 2026-10-30 | 수정 | 사진 속 별을 그대로 사용 | 사진은 은하수의 빛과 먼지만 쓰고, 별은 셰이더로 화면 픽셀 단위 렌더링 | 사진 해상도의 한계로 별이 점처럼 보임 |
 | 2026-10-30 | 추가 | 스키를 묶으면 바로 조작 시작 | 미끄러지다 뒤돌아보면 늑대 무리가 쫓아오는 장면 후 조작 시작 | 도입부의 긴장감을 높이기 위함 |
 | 2026-10-30 | 추가 | 없음 | 체력 30을 회복하는 키트 | 장애물과 동물로 줄어든 체력을 회복하기 위함 |
 | 2026-10-30 | 수정 | 하늘과 산 이미지 3840px | 원본에서 하늘은 시점 범위 8192px, 산은 7680px로 다시 제작 | 플레이 테스트에서 해상도가 낮게 보임. 파일 크기는 커짐 |

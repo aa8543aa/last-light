@@ -552,7 +552,7 @@ const updateRun = dt => {
   const boosting = (keys.ShiftLeft || keys.ShiftRight) && !S.spent;
   S.st = clamp(S.st + (boosting ? -13 : 26) * dt, 0, 100);
   S.slow = Math.min(1, S.slow + dt * .5);
-  const want = SPEED * (boosting ? BOOST : 1) * S.slow * Math.min(1, .25 + S.t / 2.5);
+  const want = SPEED * (boosting ? BOOST : 1) * S.slow * Math.min(1, .7 + S.t / 2.5);
   S.speed += (want - S.speed) * Math.min(1, dt * 5);
   S.z = Math.min(TOTAL, S.z + S.speed * dt);
   if (S.y > 0) {
@@ -1251,7 +1251,46 @@ const introCraft = async () => {
   skiProps.forEach(k => k.setEnabled(false));
   pose.on = false;
   S.z = z; S.u = cur.pos.x - x;
+  // 묶은 스키로 바로 미끄러져 내려간다.
 };
+
+// 스키를 신고 미끄러지기 시작하면 뒤에서 늑대 무리가 쫓아온다.
+const chasers = [0, 1, 2].map(i => buildBeast('chaser' + i, [.09, .1, .12], 1));
+const introChase = async () => {
+  bodyPose.arm = POSES.skiArm; bodyPose.leg = POSES.hideLeg;
+  wearSkis(true);
+  S.speed = 2;
+  const follow = (turn, dt) => {
+    S.z += S.speed * dt;
+    S.u *= 1 - Math.min(1, dt);
+    const x = pathX(S.z) + S.u;
+    cur.pos.set(x, groundY(x, S.z) + 1.25, S.z);
+    const a = Math.atan2(pathX(S.z + 16) - pathX(S.z), 16) + turn * 2.85;
+    const pitch = -.04 - turn * .05;
+    cur.look.set(x + Math.sin(a) * Math.cos(pitch) * 16, cur.pos.y + Math.sin(pitch) * 16, S.z + Math.cos(a) * Math.cos(pitch) * 16);
+    cur.roll = turn * .1;
+  };
+  await play(2, (u, dt) => { S.speed = 2 + u * 9; follow(0, dt); });
+  chasers.forEach(c => c.root.setEnabled(true));
+  const lanes = [-2.3, .2, 2.5], lag = [0, 3.5, 1.6];
+  await play(3.6, (u, dt) => {
+    S.speed = 11 + u * 2;
+    const turn = smooth(.02, .24, u) * (1 - smooth(.8, 1, u));
+    follow(turn, dt);
+    wearSkis(turn < .45);
+    bodyPose.arm = turn < .45 ? POSES.skiArm : POSES.hideArm;
+    chasers.forEach((c, i) => {
+      const z = S.z - 27 + u * 14 - lag[i], x = pathX(z) + lanes[i];
+      c.root.position.set(x, groundY(x, z) + Math.abs(Math.sin(clock * 8 + i)) * .28, z);
+      c.root.rotation.y = 0;
+      c.legs.forEach((l, k) => { l.rotation.x = Math.sin(clock * 16 + k * 1.6 + i) * .85; });
+    });
+  });
+  chasers.forEach(c => c.root.setEnabled(false));
+  wearSkis(true);
+  bodyPose.arm = POSES.skiArm;
+};
+S.introChase = introChase;
 
 const runIntro = async () => {
   await introCabin();
@@ -1262,12 +1301,12 @@ const runIntro = async () => {
   await introWake();
   await introDiscover();
   await introCraft();
-  bodyPose.arm = POSES.skiArm; bodyPose.leg = POSES.hideLeg;
-  wearSkis(true);
+  await introChase();
   startRun();
 };
 const jumpToRun = () => {
   anim = null; pose.on = false; pose.shake = 0;
+  chasers.forEach(c => c.root.setEnabled(false));
   setAir(false);
   gift.setEnabled(false); giftWreck.setEnabled(false);
   hole.setEnabled(false); rim.setEnabled(false); parts.forEach(k => k.m.setEnabled(false));

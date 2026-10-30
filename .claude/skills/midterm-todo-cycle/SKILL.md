@@ -1,6 +1,6 @@
 ---
 name: midterm-todo-cycle
-description: realistic-combat-web 저장소에서 Todo 항목을 하나 진행할 때 사용한다. 과제 조건을 먼저 확인하고, 브라우저 검증, README 기록, 커밋과 push까지 한 항목 단위로 끝낸다.
+description: last-light 저장소에서 Todo 항목을 하나 진행할 때 사용한다. 과제 조건을 먼저 확인하고, 브라우저 검증, README 기록, 커밋과 push까지 한 항목 단위로 끝낸다.
 ---
 
 # 중간고사 Todo 작업 주기

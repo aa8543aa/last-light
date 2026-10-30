@@ -100,6 +100,7 @@
 - [x] 민가를 언덕 지형 위의 집과 창문 불빛으로 교체
 - [x] 코스 3km, 기본 속도 43m/s, 스테미나는 점프 전용으로 변경
 - [x] 급경사 위 추락 지점과 자동 활강 인트로로 변경
+- [x] 사용한 스킬과 활용 방식을 README에 기록
 - [ ] 사운드와 크리스마스 연출 추가
 - [x] 1차 최적화 (전후 수치는 변경 내역 참고)
 - [ ] 게임 완성 후 최종 성능 측정
@@ -169,18 +170,99 @@
 
 ## 4. 스킬
 
+이번 프로젝트에서 사용한 스킬은 두 가지입니다.
+
+### run (기존 스킬)
+
+**고른 이유:** 이 과제는 브라우저에서 실제로 실행되어야 합니다. `run`은 테스트 코드가 아니라 앱을 직접 띄우고 조작한 뒤 화면을 보고 판단하게 하는 스킬이라, 렌더링 문제가 많은 이 게임의 검증에 맞습니다.
+
+**쓰인 방식:** 급경사 추락 지점과 자동 활강 인트로를 검증할 때 Claude Code의 Skill 도구로 호출했습니다. 스킬의 절차대로 프로젝트 전용 실행 스킬이 있는지 먼저 찾았고, 없어서 브라우저 방식을 따랐습니다. 다만 스킬의 예시 도구인 `chromium-cli` 대신 앱 내 브라우저에서 게임을 조작하고 스크린샷을 확인했습니다.
+
+**찾아낸 문제:** 활강과 조작 시작은 정상이었지만, 높은 곳에서 민가가 보이지 않았습니다. 스크린샷을 보고 하늘 바닥판이 계곡을 가리는 것을 찾아 고쳤습니다. 코드만 읽어서는 놓쳤을 문제입니다.
+
+**SKILL.md 내용:** (Claude Code 내장 스킬)
+
+````markdown
+**Running means launching the actual app and interacting with it** -
+not the test suite, not an `import` of an internal function and a
+`console.log`. The app as a user (human or programmatic) would meet
+it: the CLI at its command, the server at its socket, the GUI at its
+window.
+
+## First: does a project skill already cover this?
+
+A project skill that launches this app is the repo's verified path -
+its author already cold-started from a Linux container and committed
+what worked: the exact `apt-get` line, the env vars, the patches, the
+driver. Use it instead of rediscovering.
+
+```bash
+d=$PWD; while :; do
+  grep -Hm1 '^description:' "$d"/.claude/skills/*/SKILL.md 2>/dev/null
+  [ -e "$d/.git" ] || [ "$d" = / ] && break
+  d=$(dirname "$d")
+done
+```
+
+- **One describes launching/driving this app** -> read that SKILL.md
+  and follow it verbatim. Don't paraphrase; don't skip the patches.
+- **Mega-repo, several plausible, no clear match** -> ask the user
+  which unit to run.
+- **Stale** (fails on mechanics unrelated to your task) -> tell the
+  user; offer to refresh it via `/run-skill-generator`.
+- **Nothing about running** -> fall back to the patterns below.
+
+## Otherwise: match the shape, use the pattern
+
+Pick the row closest to your project. Each example walks through
+launch + first interaction; ignore any trailing "write the skill"
+section - you're using the recipe, not authoring one.
+
+| Project type | Handle | Example |
+|---|---|---|
+| CLI tool | direct invocation, exit code, stdin/stdout | [examples/cli.md](examples/cli.md) |
+| Web server / API | background launch + `curl` smoke | [examples/server.md](examples/server.md) |
+| TUI / interactive terminal | tmux `send-keys` / `capture-pane` | [examples/tui.md](examples/tui.md) |
+| Electron / desktop GUI | Playwright `_electron` REPL under xvfb | [examples/electron.md](examples/electron.md) |
+| Browser-driven | dev server + `chromium-cli` script | [examples/playwright.md](examples/playwright.md) |
+| Library / SDK | import-and-call smoke script at the package boundary | [examples/library.md](examples/library.md) |
+
+If nothing fits, start from the closest match and adapt. For a web
+app, [examples/playwright.md](examples/playwright.md) - drive it with
+`chromium-cli`, no custom driver needed. For a desktop app,
+[examples/electron.md](examples/electron.md) - it has the `_electron`
+REPL driver skeleton and the tmux wrapping.
+
+## Drive it, don't just launch it
+
+Launching with no interaction proves the entrypoint resolves. That's
+not running the app - it's typechecking with extra steps. Drive it to
+a point where a user would see something:
+
+- CLI -> type a representative command, check the exit code and output.
+- Server -> hit the route the diff touches with `curl`, read the body.
+- TUI -> `send-keys` a navigation, `capture-pane` the result.
+- GUI -> click the button, screenshot the window. **Look at the
+  screenshot.** A blank frame is a failure to launch.
+
+If the fallback pattern didn't work out of the box - you had to
+install packages, set env vars, patch config, or write a driver -
+recommend `/run-skill-generator` in your report so that work gets
+captured as a project skill. If it just worked, don't.
+````
+
 ### midterm-todo-cycle (직접 제작)
 
-**만든 이유:** 작업 도중 push가 한 번도 안 된 상태로 진행된 적이 있었습니다. 과제는 Todo 작업 중 일정한 간격의 push와 변경 내역 기록을 요구하므로, 매 항목마다 같은 절차를 따르도록 스킬로 고정했습니다.
+**만든 이유:** 작업 도중 push가 한 번도 안 된 상태로 진행된 적이 있었습니다. 과제는 Todo 작업 중 일정한 간격의 push와 변경 내역 기록을 요구하므로, 매 항목마다 따를 절차를 문서로 고정했습니다.
 
-**활용 방식:** 이 스킬을 만든 뒤부터 Todo 항목마다 과제 조건 확인, 구현, 브라우저 검증, README 기록, 커밋과 push 순서로 진행합니다.
+**쓰인 방식:** 이 스킬은 작업 중에 만들어서 해당 세션의 스킬 목록에 등록되지 않았고, 호출을 시도했을 때도 인식되지 않았습니다. 그래서 자동으로 실행한 것이 아니라, 절차 문서로 참고해 Todo 항목마다 직접 따랐습니다. 그럼에도 여러 작업을 한 커밋에 묶은 적이 있어, 사용자의 지적을 받고 이후 작업 단위로 나눴습니다.
 
 **SKILL.md 내용:** ([원본](.claude/skills/midterm-todo-cycle/SKILL.md))
 
 ````markdown
 ---
 name: midterm-todo-cycle
-description: realistic-combat-web 저장소에서 Todo 항목을 하나 진행할 때 사용한다. 과제 조건을 먼저 확인하고, 브라우저 검증, README 기록, 커밋과 push까지 한 항목 단위로 끝낸다.
+description: last-light 저장소에서 Todo 항목을 하나 진행할 때 사용한다. 과제 조건을 먼저 확인하고, 브라우저 검증, README 기록, 커밋과 push까지 한 항목 단위로 끝낸다.
 ---
 
 # 중간고사 Todo 작업 주기

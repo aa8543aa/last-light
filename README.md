@@ -10,7 +10,7 @@
 
 - 실행 방법: [GitHub Pages에서 플레이](https://aa8543aa.github.io/last-light/) 또는 `index.html`을 브라우저로 열기 (인터넷 연결 필요)
 - 조작법: `A`/`D` 또는 `←`/`→`로 좌우 이동, `Shift` 부스트, `Space` 점프, 마우스로 주변 보기 (화면 클릭 시 포인터 잠금)
-- 에셋 출처: 하늘은 [Milky Way at Chajnantor](https://commons.wikimedia.org/wiki/File:Milky_Way_at_Chajnantor_(uhd_9428_panorama_eq).jpg) (Y. Beletsky (LCO)/ESO, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0)), 산은 [Kanchenjungha-Panorama](https://commons.wikimedia.org/wiki/File:Kanchenjungha-Panorama.jpg) (Sujay25, [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0))를 사용함. 하늘은 위쪽만 잘랐고, 산은 하늘을 지우고 밤 색으로 보정함. 눈 지면은 [Poly Haven Snow 02](https://polyhaven.com/a/snow_02) (Rob Tuytel, CC0). 나무와 바위는 코드로 생성함
+- 에셋 출처: 하늘은 [Milky Way at Chajnantor](https://commons.wikimedia.org/wiki/File:Milky_Way_at_Chajnantor_(uhd_9428_panorama_eq).jpg) (Y. Beletsky (LCO)/ESO, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0)), 산은 [Kanchenjungha-Panorama](https://commons.wikimedia.org/wiki/File:Kanchenjungha-Panorama.jpg) (Sujay25, [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0))를 사용함. 하늘은 위쪽만 잘라 별을 지웠고, 산은 하늘을 지우고 밤 색으로 보정함. 눈 지면은 [Poly Haven Snow 02](https://polyhaven.com/a/snow_02) (Rob Tuytel, CC0). 나무와 바위는 코드로 생성함
 
 ## 2. PRD
 
@@ -150,6 +150,7 @@
 | 2026-10-30 | 수정 | 18m/s, 5.4km, 틈 19m | 27m/s, 8.1km, 틈 24m, 장애물 간격 1.5배 | 플레이 테스트에서 속도가 답답함. 약 5분 길이와 부스트 필수 구간은 유지 |
 | 2026-10-30 | 수정 | 사진 속 별을 그대로 사용 | 사진은 은하수의 빛과 먼지만 쓰고, 별은 셰이더로 화면 픽셀 단위 렌더링 | 사진 해상도의 한계로 별이 점처럼 보임 |
 | 2026-10-30 | 삭제 | 도끼 파밍과 장애물 파괴 | 없음 | 점프와 부스트로 충분하다고 판단해 범위에서 제외 |
+| 2026-10-30 | 수정 | 굵고 많은 별, 사진 속 별의 얼룩, 블룸 | 1~2픽셀의 선명한 별, 원본 사진에서 별을 지워 먼지 띠까지 선명한 은하수, 블룸 제거 | 하늘이 정신없고 저해상도처럼 보임 |
 | 2026-10-30 | 추가 | 스키를 묶으면 바로 조작 시작 | 미끄러지다 뒤돌아보면 늑대 무리가 쫓아오는 장면 후 조작 시작 | 도입부의 긴장감을 높이기 위함 |
 | 2026-10-30 | 추가 | 없음 | 체력 30을 회복하는 키트 | 장애물과 동물로 줄어든 체력을 회복하기 위함 |
 | 2026-10-30 | 수정 | 하늘과 산 이미지 3840px | 원본에서 하늘은 시점 범위 8192px, 산은 7680px로 다시 제작 | 플레이 테스트에서 해상도가 낮게 보임. 파일 크기는 커짐 |

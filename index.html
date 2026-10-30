@@ -641,6 +641,23 @@ const placeVillage = (cx, cz, spread, height = groundY, size = 1) => {
     k.root.setEnabled(true);
   }
 };
+const xmas = new B.TransformNode('xmas', scene);
+{
+  const colors = [[1, .2, .12], [.2, .9, .3], [1, .75, .2], [.3, .55, 1]].map((c, i) => {
+    const m = new B.StandardMaterial('bulb' + i, scene);
+    m.disableLighting = true; m.emissiveColor = new B.Color3(...c); m.fogEnabled = false;
+    return m;
+  });
+  for (let i = 0; i < 70; i++) {
+    const t = i / 70, a = i * 2.4, r = (1 - t) * 2.5 + .15;
+    const bulb = B.MeshBuilder.CreateSphere('bulb', { diameter: .17, segments: 5 }, scene);
+    bulb.material = colors[i % 4]; bulb.parent = xmas;
+    bulb.position.set(Math.cos(a) * r, 1.8 + t * 8.6, Math.sin(a) * r);
+  }
+  const star = B.MeshBuilder.CreateSphere('star', { diameter: .42, segments: 6 }, scene);
+  star.material = colors[2]; star.parent = xmas; star.position.y = 10.6;
+}
+xmas.setEnabled(false);
 const showVillage = on => houses.forEach(k => k.root.setEnabled(on));
 // 약 3km 밖의 마을: 먼 능선을 카메라 앞에 두고, 3km 거리와 같은 크기와 각도로 보이게 한다.
 const FAR_R = 640, FAR_SCALE = FAR_R / 3150;
@@ -780,8 +797,15 @@ const updateRun = dt => {
   updateBeast();
   updateKits(dt);
   updateCoins();
-  if (!S.villageNear && S.z > TOTAL - 520) { S.villageNear = true; placeVillage(pathX(TOTAL + 55), TOTAL + 55, 24); }
-  if (S.z >= TOTAL && S.mode === 'run') finish(true);
+  if (!S.villageNear && S.z > TOTAL - 520) { S.villageNear = true;
+    placeVillage(pathX(TOTAL + 72), TOTAL + 72, 26);
+    const tx = pathX(TOTAL + 46), tz = TOTAL + 46;
+    xmas.position.set(tx, groundY(tx, tz), tz);
+    xmas.setEnabled(true);
+    xmasTree.position.copyFrom(xmas.position);
+    xmasTree.setEnabled(true);
+  }
+  if (S.z >= TOTAL && S.mode === 'run') { S.mode = 'arrive'; S.arrive = 0; }
 };
 
 const updateFall = dt => {
@@ -798,6 +822,18 @@ const updateFall = dt => {
     $('fade').style.opacity = 0;
     if (S.mode === 'falling') S.mode = 'run';
   }
+};
+
+const updateArrive = dt => {
+  S.arrive += dt;
+  S.speed = Math.max(0, S.speed - 26 * dt);
+  S.z += S.speed * dt;
+  S.u *= 1 - Math.min(1, dt * 1.4);
+  const x = pathX(S.z) + S.u, ahead = TOTAL + 46;
+  cur.pos.set(x, surfaceY(x, S.z) + 1.5, S.z);
+  cur.look.set(pathX(ahead), surfaceY(pathX(ahead), ahead) + 4.5, ahead);
+  cur.roll *= 1 - Math.min(1, dt * 2);
+  if (S.arrive > 6) finish(true);
 };
 
 const updateHud = () => {
@@ -911,6 +947,7 @@ const hurt = amount => {
 };
 const finish = won => {
   S.mode = won ? 'won' : 'dead';
+  $('hud').classList.remove('on');
   $('rTitle').textContent = won ? '민가에 도착했다' : '더 나아갈 수 없었다';
   $('rScore').textContent = `점수 ${$('vScore').textContent} · 시간 ${$('vTime').textContent}`;
   $('result').style.display = 'grid';
@@ -1705,6 +1742,8 @@ const adaptResolution = dt => {
   if (f < 28 && scale < 1.25) { scale = Math.min(1.25, scale + .1); engine.setHardwareScalingLevel(scale / devicePixelRatio); }
   else if (f > 50 && scale > 1) { scale = Math.max(1, scale - .05); engine.setHardwareScalingLevel(scale / devicePixelRatio); }
 };
+const xmasTree = treeCardMesh('xmasTree', FIR_CELLS[2], FIR_CELLS[3], firMat);
+xmasTree.setEnabled(false);
 const fps = $('fps');
 let frames = 0, clock = 0;
 window.__game = S;
@@ -1714,6 +1753,7 @@ engine.runRenderLoop(() => {
   if (S.mode === 'run') updateRun(dt);
   else if (S.mode === 'intro') updateIntro(dt);
   else if (S.mode === 'falling') updateFall(dt);
+  else if (S.mode === 'arrive') updateArrive(dt);
   clock += dt;
   updateBody(dt, clock);
   camera.position.copyFrom(cur.pos).addInPlaceFromFloats(rnd(-pose.shake, pose.shake), rnd(-pose.shake, pose.shake), 0);

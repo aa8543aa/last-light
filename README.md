@@ -8,7 +8,7 @@
 
 비행기 사고로 고도가 높은 산에 조난당한 주인공이 잔해로 스키를 만들어 마을까지 내려갑니다. 어두운 숲길에서 나무와 돌을 피하거나 파괴하며 달리고, 약 5분 뒤 민가에 도착하면 끝납니다.
 
-- 실행 방법: `index.html`을 브라우저로 열기 (인터넷 연결 필요, GitHub Pages 배포 예정)
+- 실행 방법: [GitHub Pages에서 플레이](https://aa8543aa.github.io/realistic-combat-web/) 또는 `index.html`을 브라우저로 열기 (인터넷 연결 필요)
 - 조작법: `A`/`D` 또는 `←`/`→`로 좌우 이동
 - 에셋 출처: 추락 장면 배경은 [Kanchenjungha-Panorama.jpg](https://commons.wikimedia.org/wiki/File:Kanchenjungha-Panorama.jpg) (Sujay25, [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0)). 크기를 줄이고 게임에서 밤 색조로 보정하며 위쪽 하늘을 지워 사용함. 그 외 모델과 텍스처는 코드로 생성함
 
@@ -83,7 +83,7 @@
 - [x] 렌더 테스트 개선 (민가 불빛, 상고대, 성능)
 - [x] 프로젝트 전용 스킬 작성
 - [x] 게임용 index.html 구성
-- [ ] GitHub Pages 배포
+- [x] GitHub Pages 배포
 - [x] 끝없이 이어지는 코스 생성 구현
 - [x] 좌우 이동과 스키 카메라 구현
 - [ ] 지나갈 길을 보장하는 장애물 배치 구현

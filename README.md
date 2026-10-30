@@ -10,7 +10,7 @@
 
 - 실행 방법: [GitHub Pages에서 플레이](https://aa8543aa.github.io/last-light/) 또는 `index.html`을 브라우저로 열기 (인터넷 연결 필요)
 - 조작법: `A`/`D` 또는 `←`/`→`로 좌우 이동, `Space` 점프, 마우스를 움직여 주변 보기 (커서를 위로 올리면 하늘)
-- 에셋 출처: 하늘은 [Milky Way at Chajnantor](https://commons.wikimedia.org/wiki/File:Milky_Way_at_Chajnantor_(uhd_9428_panorama_eq).jpg) (Y. Beletsky (LCO)/ESO, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0)), 산은 [Kanchenjungha-Panorama](https://commons.wikimedia.org/wiki/File:Kanchenjungha-Panorama.jpg) (Sujay25, [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0))를 사용함. 하늘은 위쪽만 잘라 별을 지웠고, 산은 하늘을 지우고 밤 색으로 보정함. 눈 지면은 [Poly Haven Snow 02](https://polyhaven.com/a/snow_02) (Rob Tuytel, CC0). 나무는 [Poly Haven Fir Tree 01](https://polyhaven.com/a/fir_tree_01), [Fir Sapling Medium](https://polyhaven.com/a/fir_sapling_medium) (Rob Tuytel, Rico Cilliers, CC0)에 눈과 달빛을 입혀 이미지로 제작함. 바위 재질은 [Poly Haven Rock Boulder Cracked](https://polyhaven.com/a/rock_boulder_cracked) (Dario Barresi, Dimitrios Savva, CC0), 바위 형태는 코드로 생성함
+- 에셋 출처: 하늘은 [Milky Way at Chajnantor](https://commons.wikimedia.org/wiki/File:Milky_Way_at_Chajnantor_(uhd_9428_panorama_eq).jpg) (Y. Beletsky (LCO)/ESO, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0)), 산은 [Kanchenjungha-Panorama](https://commons.wikimedia.org/wiki/File:Kanchenjungha-Panorama.jpg) (Sujay25, [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0))를 사용함. 하늘은 위쪽만 잘라 별을 지웠고, 산은 하늘을 지우고 밤 색으로 보정함. 눈 지면은 [Poly Haven Snow 02](https://polyhaven.com/a/snow_02) (Rob Tuytel, CC0). 나무는 [Poly Haven Fir Tree 01](https://polyhaven.com/a/fir_tree_01), [Fir Sapling Medium](https://polyhaven.com/a/fir_sapling_medium) (Rob Tuytel, Rico Cilliers, CC0)에 눈과 달빛을 입혀 이미지로 제작함. 바위 재질은 [Poly Haven Rock Boulder Cracked](https://polyhaven.com/a/rock_boulder_cracked) (Dario Barresi, Dimitrios Savva, CC0), 바위 형태는 코드로 생성함. 스키 판자 재질은 [Poly Haven Weathered Planks](https://polyhaven.com/a/weathered_planks) (Dario Barresi, Dimitrios Savva, CC0)
 
 ## 2. PRD
 
@@ -107,6 +107,7 @@
 - [x] 눈 지면의 얼룩 제거와 바람 물결 추가
 - [x] 하늘 대기광과 은하수 대비, 산 가장자리 개선
 - [x] 장애물을 실사 나무와 통나무로 개선
+- [x] 팔과 스키의 형태와 재질 개선
 - [ ] 사운드와 크리스마스 연출 추가
 - [x] 1차 최적화 (전후 수치는 변경 내역 참고)
 - [ ] 게임 완성 후 최종 성능 측정
@@ -173,6 +174,7 @@
 | 2026-10-30 | 수정 | 촬영 눈 재질의 색상을 그대로 사용 | 재질의 굴곡만 쓰고 색은 밝은 눈으로, 바람 물결과 넓은 밝기 변화 추가 | 재질의 어두운 자국이 흙이나 발자국처럼 보임 |
 | 2026-10-30 | 수정 | 평면적인 하늘, 산 가장자리의 파란 테두리 | 지평선 대기광, 은하수 대비 강화, 테두리 제거 | 하늘과 산을 더 사실적으로 만들기 위함 |
 | 2026-10-30 | 수정 | 코드로 만든 마른 나무와 단색 통나무 | 스캔 전나무 사진, 촬영한 나무껍질 통나무와 쌓인 눈 | 숲과 달리 장애물만 인공적으로 보임 |
+| 2026-10-30 | 수정 | 캡슐 모양의 팔, 끊어져 보이는 스키 | 주름 소매와 손가락 장갑, 앞이 휜 판자에 금속판과 끈을 묶은 스키, 나뭇가지 지팡이 | 1인칭에서 계속 보이는 부분이라 단순한 도형이 눈에 띔 |
 | 2026-10-30 | 추가 | 스키를 묶으면 바로 조작 시작 | 미끄러지다 뒤돌아보면 늑대 무리가 쫓아오는 장면 후 조작 시작 | 도입부의 긴장감을 높이기 위함 |
 | 2026-10-30 | 추가 | 없음 | 체력 30을 회복하는 키트 | 장애물과 동물로 줄어든 체력을 회복하기 위함 |
 | 2026-10-30 | 수정 | 하늘과 산 이미지 3840px | 원본에서 하늘은 시점 범위 8192px, 산은 7680px로 다시 제작 | 플레이 테스트에서 해상도가 낮게 보임. 파일 크기는 커짐 |

@@ -114,11 +114,17 @@ const fbm = (x, y) => noise(x, y) * .5 + noise(x * 2.1, y * 2.1) * .3 + noise(x 
 
 const pathHalf = z => 3 + fbm(z * .035, 7.3) * 3.2;
 const pathX = z => 7 * Math.sin(z * .028) + 2 * Math.sin(z * .07);
+const LAND_Z = -150;
+const steep = z => { const w = Math.max(0, -z); return .42 * w * w / (w + 30); };
+const startSlope = z => {
+  const k = Math.exp(-(((z - LAND_Z - 4) / 15) ** 2));
+  return steep(z) * (1 - k) + steep(LAND_Z + 4) * k;
+};
 const surfaceY = (x, z) => {
   const dx = x - pathX(z), d = Math.abs(dx);
   const hillside = Math.max(0, -dx - 5) * .42 - Math.max(0, dx - 5) * .3;
   return smooth(4, 10.5, d) * (1.1 + d * .05) + (fbm(x * .12, z * .12) - .5) * (.25 + smooth(3, 12, d) * 2.2)
-    + hillside - z * .09 + Math.sin(z * .013) * 7
+    + hillside - z * .09 + Math.sin(z * .013) * 7 + startSlope(z)
     + 26 * Math.exp(-(((x - VILLAGE_X) / 42) ** 2 + ((z - VILLAGE_Z) / 42) ** 2)) * smooth(8, 22, d);
 };
 
@@ -204,7 +210,7 @@ const lit = (name, r, g, b, rough) => {
 };
 
 // 지면: 뒤로 지나간 조각을 앞으로 옮겨 높이를 다시 계산한다.
-const CH = 90, CHUNKS = 4;
+const CH = 90, CHUNKS = 6;
 const snow = lit('snow', .84, .89, .98, .62);
 snow.bumpTexture = normalTex;
 snow.albedoTexture = snowAlbedo;
@@ -245,7 +251,7 @@ for (let i = 0; i < CHUNKS; i++) {
   m.colorBuf = new Float32Array(m.basePos.length / 3 * 4).fill(1);
   m.setVerticesData('color', m.colorBuf, true, 4);
   m.material = snow; m.receiveShadows = true;
-  buildChunk(m, -20 + i * CH);
+  buildChunk(m, LAND_Z - 50 + i * CH);
   chunks.push(m);
 }
 
@@ -328,7 +334,8 @@ const plantField = (mesh, o) => {
       const side = rnd() < .5 ? -1 : 1;
       x = pathX(z) + side * (o.edge ? pathHalf(z) + rnd(o.dMin, o.dMax) : rnd(o.dMin, o.dMax));
       // 시작 지점에서 민가 불빛이 보이도록 처음 배치할 때만 시야를 비운다.
-      if (!first || ((z < 12 || z > VILLAGE_Z + 40 || Math.abs(x - VILLAGE_X * z / VILLAGE_Z) > 6 + z * .07) && Math.hypot(x - VILLAGE_X, z - VILLAGE_Z) > 34)) break;
+      const along = (z - LAND_Z) / (VILLAGE_Z - LAND_Z);
+      if (!first || ((z < LAND_Z + 12 || z > VILLAGE_Z + 40 || Math.abs(x - (pathX(LAND_Z) + (VILLAGE_X - pathX(LAND_Z)) * along)) > 6 + along * 26) && Math.hypot(x - VILLAGE_X, z - VILLAGE_Z) > 34)) break;
       z += 3;
     }
     it.z = z; it.x = x;
@@ -336,7 +343,7 @@ const plantField = (mesh, o) => {
     B.Matrix.Compose(new B.Vector3(s * rnd(.8, 1.25), s * rnd(.75, 1.15), s * rnd(.8, 1.25)), B.Quaternion.RotationAxis(B.Axis.Y, rnd(0, 6.28)),
       new B.Vector3(x, groundY(x, z) - (o.sink || .1) * s, z)).copyToArray(all, it.i * 16);
   };
-  for (let i = 0; i < o.count; i++) { const it = { i, z: 0, x: 0 }; items.push(it); spawn(it, rnd(-15, o.span - 15), true); }
+  for (let i = 0; i < o.count; i++) { const it = { i, z: 0, x: 0 }; items.push(it); spawn(it, LAND_Z + rnd(-15, o.span - 15), true); }
   shown.set(all);
   mesh.thinInstanceSetBuffer('matrix', shown, 16, false);
   mesh.alwaysSelectAsActiveMesh = true;
@@ -601,6 +608,17 @@ ring.material = rangePic.m;
 ring.rotation.y = RING_YAW;
 const floorMat = new B.StandardMaterial('floorM', scene);
 floorMat.disableLighting = true; floorMat.emissiveColor = new B.Color3(.085, .115, .19); floorMat.fogEnabled = false; floorMat.backFaceCulling = false;
+// 산 띠와 바닥이 만나는 선을 가리는 낮은 안개
+const mistTex = new B.DynamicTexture('mist', { width: 4, height: 256 }, scene, true);
+{
+  const c = mistTex.getContext(), g = c.createLinearGradient(0, 0, 0, 256);
+  g.addColorStop(0, 'rgba(58,78,116,0)'); g.addColorStop(.5, 'rgba(58,78,116,1)'); g.addColorStop(.62, 'rgba(40,56,86,1)'); g.addColorStop(1, 'rgba(24,34,54,0)');
+  c.fillStyle = g; c.fillRect(0, 0, 4, 256); mistTex.update(false); mistTex.hasAlpha = true;
+}
+const mistMat = new B.StandardMaterial('mistM', scene);
+mistMat.emissiveTexture = mistTex; mistMat.opacityTexture = mistTex; mistMat.disableLighting = true; mistMat.fogEnabled = false; mistMat.backFaceCulling = false;
+const mist = B.MeshBuilder.CreateCylinder('mist', { diameter: (RING_R - 30) * 2, height: 110, tessellation: 64, cap: B.Mesh.NO_CAP }, scene);
+mist.material = mistMat;
 const skyFloor = B.MeshBuilder.CreateDisc('skyFloor', { radius: RING_R + 20, tessellation: 48 }, scene);
 skyFloor.rotation.x = Math.PI / 2; skyFloor.material = floorMat;
 
@@ -714,7 +732,7 @@ ip.vignetteEnabled = true; ip.vignetteWeight = 1.6; ip.vignetteColor = new B.Col
 // 게임 상태
 const $ = id => document.getElementById(id);
 const JUMP_COST = 10, JUMP_POWER = 6.2, GRAVITY = 16;
-const S = { yaw: 0, pitch: 0, mode: 'intro', z: 0, u: 0, v: 0, t: 0, hp: 100, coins: 0, st: 100, y: 0, vy: 0, speed: SPEED, slow: 1 };
+const S = { yaw: 0, pitch: 0, mode: 'intro', z: LAND_Z, u: 0, v: 0, t: 0, hp: 100, coins: 0, st: 100, y: 0, vy: 0, speed: SPEED, slow: 1 };
 const keys = {};
 addEventListener('keydown', e => {
   keys[e.code] = true;
@@ -729,7 +747,7 @@ const updateRun = dt => {
   S.t += dt;
   S.st = clamp(S.st + 26 * dt, 0, 100);
   S.slow = Math.min(1, S.slow + dt * .5);
-  const want = SPEED * S.slow * Math.min(1, .55 + S.t / 2);
+  const want = SPEED * S.slow * Math.min(1, .75 + S.t / 2);
   S.speed += (want - S.speed) * Math.min(1, dt * 5);
   S.z = Math.min(TOTAL, S.z + S.speed * dt);
   if (S.y > 0) {
@@ -1245,7 +1263,7 @@ const updateIntro = dt => {
 };
 
 const seatPos = new B.Vector3(1.25, CABIN_Y + .15, 1.35);
-const landX = pathX(0), landY = groundY(landX, 0);
+const L = LAND_Z, landX = pathX(L), landY = groundY(landX, L);
 
 // 승객, 무릎 위 선물, 산소마스크: 말 없이 상황을 보여 주는 소품이다.
 const hairMats = [flat('h0', .03, .025, .02), flat('h1', .1, .07, .04), flat('h2', .16, .15, .14)];
@@ -1361,18 +1379,18 @@ const setAir = on => {
 
 // 지상 소품: 추락한 잔해와 재료
 const onGround = (m, x, z, up = 0) => { m.position.set(x, groundY(x, z) + up, z); m.receiveShadows = true; return m; };
-const fuselage = onGround(B.MeshBuilder.CreateCylinder('fuselage', { diameter: 2.4, height: 8, tessellation: 18, cap: B.Mesh.NO_CAP, sideOrientation: B.Mesh.DOUBLESIDE }, scene), landX - 11, 13, .7);
+const fuselage = onGround(B.MeshBuilder.CreateCylinder('fuselage', { diameter: 2.4, height: 8, tessellation: 18, cap: B.Mesh.NO_CAP, sideOrientation: B.Mesh.DOUBLESIDE }, scene), landX - 11, L + 13, .7);
 fuselage.rotation.set(.35, .5, 1.25); fuselage.material = metal; shadow.addShadowCaster(fuselage);
-const wing = onGround(B.MeshBuilder.CreateBox('wing', { width: 6.5, height: .16, depth: 1.8 }, scene), landX + 10, 11, .5);
+const wing = onGround(B.MeshBuilder.CreateBox('wing', { width: 6.5, height: .16, depth: 1.8 }, scene), landX + 10, L + 11, .5);
 wing.rotation.set(.24, -.6, .3); wing.material = metal; shadow.addShadowCaster(wing);
-const seatWreck = onGround(B.MeshBuilder.CreateBox('seatWreck', { width: .55, height: .8, depth: .5 }, scene), landX + 3, 3.2, .3);
+const seatWreck = onGround(B.MeshBuilder.CreateBox('seatWreck', { width: .55, height: .8, depth: .5 }, scene), landX + 3, L + 3.2, .3);
 seatWreck.rotation.set(.5, .9, .6); seatWreck.material = flat('seatW', .08, .09, .13);
-const giftWreck = onGround(B.MeshBuilder.CreateBox('giftWreck', { width: .26, height: .14, depth: .2 }, scene), landX - .55, 3.1, .06);
+const giftWreck = onGround(B.MeshBuilder.CreateBox('giftWreck', { width: .26, height: .14, depth: .2 }, scene), landX - .55, L + 3.1, .06);
 giftWreck.rotation.set(.2, .7, .18); giftWreck.material = lit('giftW', .36, .03, .04, .7);
 const parts = [
-  { m: onGround(B.MeshBuilder.CreateBox('plank', { width: .3, height: .04, depth: 1.8 }, scene), landX - 1.8, 5, .03), mat: wood },
-  { m: onGround(B.MeshBuilder.CreateBox('scrapP', { width: .7, height: .025, depth: .6 }, scene), landX + 1.6, 6.1, .03), mat: scrapMat },
-  { m: onGround(B.MeshBuilder.CreateCylinder('branch', { height: 1.6, diameterTop: .025, diameterBottom: .05, tessellation: 6 }, scene), landX + .1, 7.5, .05), mat: wood },
+  { m: onGround(B.MeshBuilder.CreateBox('plank', { width: .3, height: .04, depth: 1.8 }, scene), landX - 1.8, L + 5, .03), mat: wood },
+  { m: onGround(B.MeshBuilder.CreateBox('scrapP', { width: .7, height: .025, depth: .6 }, scene), landX + 1.6, L + 6.1, .03), mat: scrapMat },
+  { m: onGround(B.MeshBuilder.CreateCylinder('branch', { height: 1.6, diameterTop: .025, diameterBottom: .05, tessellation: 6 }, scene), landX + .1, L + 7.5, .05), mat: wood },
 ];
 parts.forEach(k => { k.m.material = k.mat; k.m.rotation.y = rnd(-.8, .8); });
 parts[2].m.rotation.x = Math.PI / 2;
@@ -1380,9 +1398,9 @@ const hole = B.MeshBuilder.CreateCylinder('hole', { diameter: 2.1, height: 3, te
 const holeMat = lit('holeM', .78, .84, .95, .9);
 holeMat.bumpTexture = normalTex; holeMat.emissiveColor = new B.Color3(.018, .028, .05);
 holeMat.backFaceCulling = false;
-hole.material = holeMat; hole.position.set(landX, landY - 1.5, 0); hole.setEnabled(false);
+hole.material = holeMat; hole.position.set(landX, landY - 1.5, L); hole.setEnabled(false);
 const rim = B.MeshBuilder.CreateTorus('rim', { diameter: 2.3, thickness: .55, tessellation: 24 }, scene);
-rim.material = snow; rim.position.set(landX, landY + .03, 0); rim.scaling.y = .45; rim.receiveShadows = true; rim.setEnabled(false);
+rim.material = snow; rim.position.set(landX, landY + .03, L); rim.scaling.y = .45; rim.receiveShadows = true; rim.setEnabled(false);
 const flakeTex = snowPs.particleTexture;
 const skiProps = [crudeSki(-1), crudeSki(1)];
 skiProps.forEach(k => k.setEnabled(false));
@@ -1396,8 +1414,8 @@ const introWake = async () => {
   canvas.style.filter = 'blur(9px)';
   bodyPose.arm = POSES.hideArm; bodyPose.leg = POSES.hideLeg;
   scene.fogDensity = .013;
-  cur.pos.set(landX, landY - 2.5, -.1);
-  cur.look.set(landX + .12, landY + 4, .7);
+  cur.pos.set(landX, landY - 2.5, L - .1);
+  cur.look.set(landX + .12, landY + 4, L + .7);
   cur.roll = .3;
   await hold(.6);
   // 눈꺼풀이 몇 번 깜빡이며 뜬다.
@@ -1415,19 +1433,19 @@ const introWake = async () => {
   await play(4.6, u => {
     // 세 번에 나눠 몸을 끌어올린다.
     const heave = (Math.floor(u * 3) + smooth(.2, .8, (u * 3) % 1)) / 3;
-    cur.pos.set(landX, startY + (endY - startY) * heave, -.1 + heave * .3);
-    cur.look.set(landX + .1 * (1 - heave), landY + 4 - heave * 3, .7 + heave * 6);
+    cur.pos.set(landX, startY + (endY - startY) * heave, L - .1 + heave * .3);
+    cur.look.set(landX + .1 * (1 - heave), landY + 4 - heave * 3, L + .7 + heave * 6);
     cur.roll = .3 * (1 - heave) + Math.sin(u * 19) * .025;
     if (Math.random() < .03) burst(cur.pos.add(new B.Vector3(0, .6, .4)), 30, new B.Color4(.8, .86, 1, .7), new B.Color4(.6, .7, 1, .25), .12, 1.4, flakeTex);
   });
-  burst(new B.Vector3(landX, landY + .4, .4), 260, new B.Color4(.85, .9, 1, .8), new B.Color4(.65, .75, 1, .3), .22, 3.2, flakeTex);
+  burst(new B.Vector3(landX, landY + .4, L + .4), 260, new B.Color4(.85, .9, 1, .8), new B.Color4(.65, .75, 1, .3), .22, 3.2, flakeTex);
   hole.setEnabled(false);
   lantern.setEnabled(true);
   bodyPose.arm = POSES.hideArm;
   bodyPose.rate = 6;
   pose.on = true; pose.rate = 1.4;
   pose.pos.copyFrom(cur.pos); pose.look.copyFrom(cur.look); pose.roll = 0;
-  standAt(landX, .2);
+  standAt(landX, L + .2);
 };
 
 // 주변을 둘러보고, 선물을 줍고, 먼 불빛을 발견한다.
@@ -1435,17 +1453,17 @@ const introDiscover = async () => {
   const dazed = fn => (u, dt) => { pose.roll = Math.sin(clock * 1.3) * .05; if (fn) fn(u, dt); };
   // 숨을 고르며 천천히 정신을 차린다.
   pose.rate = .9;
-  lookAt(landX + 1.5, landY + .4, 8);
+  lookAt(landX + 1.5, landY + .4, L + 8);
   await play(2.6, dazed());
   canvas.style.filter = 'blur(1.6px)';
   // 왼쪽의 동체, 오른쪽의 날개를 둘러본다.
-  lookAt(landX - 11, landY + 1, 13);
+  lookAt(landX - 11, landY + 1, L + 13);
   await play(3.2, dazed());
   canvas.style.filter = 'none';
-  lookAt(landX + 10, landY, 11);
+  lookAt(landX + 10, landY, L + 11);
   await play(3, dazed());
   // 눈 위에 떨어진 선물을 줍는다.
-  lookAt(landX - .55, landY - .3, 3.1); pose.rate = 1.8; standAt(landX - .3, 1.8, 1);
+  lookAt(landX - .55, landY - .3, L + 3.1); pose.rate = 1.8; standAt(landX - .3, L + 1.8, 1);
   await hold(1.8);
   bodyPose.arm = POSES.reachArm; await hold(1);
   giftWreck.setEnabled(false);
@@ -1454,7 +1472,7 @@ const introDiscover = async () => {
   gift.setEnabled(false);
   bodyPose.arm = POSES.hideArm;
   // 일어나 멀리 눈을 돌리면 산자락에 불빛이 보인다.
-  standAt(landX, 2.2); pose.rate = .55; pose.roll = 0;
+  standAt(landX, L + 2.2); pose.rate = .55; pose.roll = 0;
   lookAt(VILLAGE_X, groundY(VILLAGE_X, VILLAGE_Z) + 3, VILLAGE_Z);
   await hold(3.4);
   // 불빛을 알아보고 시선이 고정된다.
@@ -1469,7 +1487,7 @@ const introDiscover = async () => {
 // 잔해를 모아 엉성한 스키를 묶고, 묶는 순간 바로 출발한다.
 const introCraft = async () => {
   pose.rate = 1.6;
-  const steps = [[-1.8, 5], [1.6, 6.1], [.1, 7.5]];
+  const steps = [[-1.8, L + 5], [1.6, L + 6.1], [.1, L + 7.5]];
   for (let i = 0; i < 3; i++) {
     const [dx, z] = steps[i];
     standAt(landX + dx * .55, z - 1.15, 1.25);
@@ -1479,7 +1497,7 @@ const introCraft = async () => {
     parts[i].m.setEnabled(false);
     bodyPose.arm = POSES.hideArm; await hold(.3);
   }
-  const z = 7.6, x = pathX(z), y = groundY(x, z);
+  const z = L + 7.6, x = pathX(z), y = groundY(x, z);
   skiProps.forEach((k, i) => {
     k.setEnabled(true);
     k.position.set(x + (i ? .24 : -.24), y + .03, z + 1.25);
@@ -1507,29 +1525,31 @@ const chasers = [0, 1, 2].map(i => buildBeast('chaser' + i, [.09, .1, .12], 1));
 const introChase = async () => {
   bodyPose.arm = POSES.skiArm; bodyPose.leg = POSES.hideLeg;
   wearSkis(true);
-  S.speed = 2;
-  const follow = (turn, dt) => {
-    S.z += S.speed * dt;
-    S.u *= 1 - Math.min(1, dt);
+  const z0 = S.z, u0 = S.u, DUR = 7.6;
+  let elapsed = 0;
+  const lanes = [-2.3, .2, 2.5], lag = [0, 3.5, 1.6];
+  await play(DUR, (u, dt) => {
+    elapsed += dt;
+    const before = S.z;
+    S.z = z0 + (0 - z0) * (u * u * (1.6 - .6 * u));
+    S.speed = (S.z - before) / Math.max(dt, .001);
+    S.u = u0 * (1 - smooth(0, .4, u));
     const x = pathX(S.z) + S.u;
     cur.pos.set(x, groundY(x, S.z) + 1.25, S.z);
-    const a = Math.atan2(pathX(S.z + 16) - pathX(S.z), 16) + turn * 2.85;
-    const pitch = -.04 - turn * .05;
+    // 처음에는 앞을, 중간에 뒤를 돌아 쫓아오는 늑대를 보고, 다시 앞을 본다.
+    const turn = smooth(.34, .46, u) * (1 - smooth(.72, .84, u));
+    const ahead = S.z + 18, slope = (groundY(pathX(ahead), ahead) - groundY(x, S.z)) / 18;
+    const a = Math.atan2(pathX(ahead) - x, 18) + turn * 2.85;
+    const pitch = Math.atan(slope) * (1 - turn) * .75 + turn * .18 - .02;
     cur.look.set(x + Math.sin(a) * Math.cos(pitch) * 16, cur.pos.y + Math.sin(pitch) * 16, S.z + Math.cos(a) * Math.cos(pitch) * 16);
-    cur.roll = turn * .1;
-  };
-  await play(2, (u, dt) => { S.speed = 2 + u * 9; follow(0, dt); });
-  chasers.forEach(c => c.root.setEnabled(true));
-  const lanes = [-2.3, .2, 2.5], lag = [0, 3.5, 1.6];
-  await play(3.6, (u, dt) => {
-    S.speed = 11 + u * 2;
-    const turn = smooth(.02, .24, u) * (1 - smooth(.8, 1, u));
-    follow(turn, dt);
+    cur.roll = turn * .1 + Math.sin(elapsed * 3.1) * .018;
     wearSkis(turn < .45);
     bodyPose.arm = turn < .45 ? POSES.skiArm : POSES.hideArm;
+    const show = u > .3 && u < .9;
     chasers.forEach((c, i) => {
-      const z = S.z - 27 + u * 14 - lag[i], x = pathX(z) + lanes[i];
-      c.root.position.set(x, groundY(x, z) + Math.abs(Math.sin(clock * 8 + i)) * .28, z);
+      c.root.setEnabled(show);
+      const z = S.z - 26 + (u - .3) * 10 - lag[i], wx = pathX(z) + lanes[i];
+      c.root.position.set(wx, groundY(wx, z) + Math.abs(Math.sin(clock * 8 + i)) * .28, z);
       c.root.rotation.y = 0;
       c.legs.forEach((l, k) => { l.rotation.x = Math.sin(clock * 16 + k * 1.6 + i) * .85; });
     });
@@ -1537,6 +1557,7 @@ const introChase = async () => {
   chasers.forEach(c => c.root.setEnabled(false));
   wearSkis(true);
   bodyPose.arm = POSES.skiArm;
+  S.z = 0; S.u = 0;
 };
 S.introChase = introChase;
 S.introDiscover = introDiscover;
@@ -1566,7 +1587,7 @@ const jumpToRun = () => {
   lantern.setEnabled(true);
   const fade = $('fade'); fade.style.transition = 'opacity .5s'; fade.style.opacity = 0;
   $('flash').style.opacity = 0;
-  S.z = 8; S.u = 0;
+  S.z = 0; S.u = 0;
   bodyPose.arm = POSES.skiArm; bodyPose.leg = POSES.hideLeg; bodyPose.rate = 6; bodyPose.wob = 0;
   camera.fov = 1;
   wearSkis(true); startRun();
@@ -1622,8 +1643,13 @@ engine.runRenderLoop(() => {
   flakePs.gravity.set(gust * .35, -.35, -(S.mode === 'run' ? S.speed * .12 : 0));
   skyMesh.position.copyFrom(cur.pos);
   skyShader.setFloat('pixel', 2 * Math.tan(camera.fov / 2) / engine.getRenderHeight());
-  ring.position.set(cur.pos.x, cur.pos.y + RING_H * .22 - (S.air ? 118 : 0), cur.pos.z);
+  // 높은 곳에서도 산 띠와 바닥이 계곡을 가리지 않도록 앞쪽 지형을 기준으로 놓는다.
+  const farZ = cur.pos.z + 200;
+  const anchor = S.air ? cur.pos.y - 118 : Math.min(cur.pos.y, surfaceY(pathX(farZ), farZ) + 6);
+  ring.position.set(cur.pos.x, anchor + RING_H * .22, cur.pos.z);
+  if (!S.air) scene.fogDensity += ((S.z < -15 ? .0042 : .013) - scene.fogDensity) * Math.min(1, dt * 1.5);
   skyFloor.position.set(cur.pos.x, ring.position.y - RING_H * .36, cur.pos.z);
+  mist.position.set(cur.pos.x, skyFloor.position.y + 6, cur.pos.z);
   updateHud();
   finishBake();
   adaptResolution(dt);

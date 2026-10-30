@@ -124,18 +124,17 @@ const surfaceY = (x, z) => {
   const dx = x - pathX(z), d = Math.abs(dx);
   const hillside = Math.max(0, -dx - 5) * .42 - Math.max(0, dx - 5) * .3;
   return smooth(4, 10.5, d) * (1.1 + d * .05) + (fbm(x * .12, z * .12) - .5) * (.25 + smooth(3, 12, d) * 2.2)
-    + hillside - z * .09 + Math.sin(z * .013) * 7 + startSlope(z)
-    + 26 * Math.exp(-(((x - VILLAGE_X) / 42) ** 2 + ((z - VILLAGE_Z) / 42) ** 2)) * smooth(8, 22, d);
+    + hillside - z * .09 + Math.sin(z * .013) * 7 + startSlope(z);
 };
 
-const VILLAGE_Z = 230, VILLAGE_X = 46;
+const VILLAGE_Z = 520, VILLAGE_X = 34;
 const TOTAL = 3000, SPEED = 43.2;
 let skyMesh, snowPs;
 const RING_YAW = 2.2;
 // 코스를 가로지르는 깊은 틈. 부스트하며 점프해야 건너간다.
 const GAP_LEN = 24, GAP_DEPTH = 70;
 const GAPS = [];
-for (let i = 0; i < 4; i++) { const z0 = 560 + i * 690 + Math.sin(i * 2.4) * 70; GAPS.push({ z0, end: z0 + GAP_LEN }); }
+for (let i = 0; i < 4; i++) { const z0 = 620 + i * 620 + Math.sin(i * 2.4) * 50; GAPS.push({ z0, end: z0 + GAP_LEN }); }
 const gapDepth = (x, z) => {
   for (const g of GAPS) {
     if (z < g.z0 - 7 || z > g.end + 7) continue;
@@ -652,23 +651,58 @@ for (let i = 0; i < 16; i++) {
     const win = B.MeshBuilder.CreateBox('houseWin', { width: .9, height: 1, depth: .08 }, scene);
     win.material = windowMat; win.parent = root; win.position.set((k ? 1 : -1) * w * .24, h * .55, -d / 2 - .05);
   }
-  const halo = B.MeshBuilder.CreatePlane('houseHalo', { size: 11 }, scene);
+  const halo = B.MeshBuilder.CreatePlane('houseHalo', { size: 20 }, scene);
   halo.material = haloMat; halo.parent = root; halo.position.set(0, h * .55, -d / 2 - .4);
   halo.billboardMode = B.Mesh.BILLBOARDMODE_ALL;
   houses.push({ root, off: new B.Vector2(0, 0) });
   const a = rnd(0, 6.28), rad = Math.sqrt(rnd(.03, 1));
   houses[i].off.set(Math.cos(a) * rad, Math.sin(a) * rad);
 }
-const placeVillage = (cx, cz, spread) => {
+const placeVillage = (cx, cz, spread, height = groundY, size = 1) => {
   for (const k of houses) {
     const x = cx + k.off.x * spread, z = cz + k.off.y * spread * .75;
-    k.root.position.set(x, groundY(x, z) - .25, z);
+    k.root.position.set(x, height(x, z) - .25 * size, z);
+    k.root.scaling.setAll(size);
     k.root.rotation.y = rnd(-.45, .45);
     k.root.setEnabled(true);
   }
 };
 const showVillage = on => houses.forEach(k => k.root.setEnabled(on));
-placeVillage(VILLAGE_X, VILLAGE_Z, 26);
+// 약 3km 밖의 마을: 먼 능선을 카메라 앞에 두고, 3km 거리와 같은 크기와 각도로 보이게 한다.
+const FAR_R = 640, FAR_SCALE = FAR_R / 3150;
+const farOrigin = (() => { const x = pathX(LAND_Z); return { x, y: groundY(x, LAND_Z) + 1.45, z: LAND_Z }; })();
+const farAngle = Math.atan2(VILLAGE_X - farOrigin.x, VILLAGE_Z - farOrigin.z);
+const farHeight = (x, z) => {
+  const dx = x - farOrigin.x, dz = z - farOrigin.z, r = Math.hypot(dx, dz), a = Math.atan2(dx, dz) - farAngle;
+  const crest = Math.max(0, r - FAR_R) * .34 - Math.max(0, FAR_R - r) * .15;
+  return farOrigin.y - FAR_R * Math.tan(5.9 * Math.PI / 180) + crest
+    + (fbm(a * 7 + 3, r * .012) - .5) * 26 * smooth(0, 60, Math.abs(r - FAR_R) + Math.abs(a) * 120);
+};
+const farHills = new B.Mesh('farHills', scene);
+{
+  const rows = 32, cols = 120, pos = [], ind = [], col = [];
+  for (let i = 0; i <= rows; i++) for (let j = 0; j <= cols; j++) {
+    const r = 330 + i / rows * 380, a = farAngle + (j / cols - .5) * 2.4;
+    const x = farOrigin.x + Math.sin(a) * r, z = farOrigin.z + Math.cos(a) * r;
+    pos.push(x, farHeight(x, z), z);
+    const k = .04 + i / rows * .05 + (fbm(j * .18, i * .4) - .5) * .018;
+    col.push(k * .8, k, k * 1.6, 1);
+  }
+  for (let i = 0; i < rows; i++) for (let j = 0; j < cols; j++) {
+    const v = i * (cols + 1) + j;
+    ind.push(v, v + cols + 1, v + 1, v + 1, v + cols + 1, v + cols + 2);
+  }
+  const vd = new B.VertexData();
+  vd.positions = pos; vd.indices = ind; vd.colors = col;
+  vd.applyToMesh(farHills);
+  const m = new B.StandardMaterial('farHillsM', scene);
+  m.disableLighting = true; m.emissiveColor = new B.Color3(1, 1, 1); m.fogEnabled = false; m.backFaceCulling = false;
+  m.linkEmissiveWithDiffuse = false;
+  farHills.material = m;
+}
+const farPoint = { x: farOrigin.x + Math.sin(farAngle) * FAR_R, z: farOrigin.z + Math.cos(farAngle) * FAR_R };
+farPoint.y = farHeight(farPoint.x, farPoint.z);
+placeVillage(farPoint.x, farPoint.z, 18, farHeight, FAR_SCALE);
 
 // 내리는 눈
 {
@@ -1067,6 +1101,7 @@ addEventListener('mousemove', e => {
 
 const startRun = () => {
   showVillage(false);
+  farHills.setEnabled(false);
   S.mode = 'run'; S.v = 0; S.t = 0;
   $('skip').style.display = 'none';
   nextObs = S.z + 120;
@@ -1371,6 +1406,7 @@ const introBreak = async () => {
 const setAir = on => {
   S.air = on;
   showVillage(!on);
+  farHills.setEnabled(!on);
   chunks.forEach(m => m.setEnabled(!on));
   scene.fogDensity = on ? 0 : .013;
   camera.maxZ = 2000;
@@ -1473,14 +1509,14 @@ const introDiscover = async () => {
   bodyPose.arm = POSES.hideArm;
   // 일어나 멀리 눈을 돌리면 산자락에 불빛이 보인다.
   standAt(landX, L + 2.2); pose.rate = .55; pose.roll = 0;
-  lookAt(VILLAGE_X, groundY(VILLAGE_X, VILLAGE_Z) + 3, VILLAGE_Z);
+  lookAt(farPoint.x, farPoint.y + 1, farPoint.z);
   await hold(3.4);
   // 불빛을 알아보고 시선이 고정된다.
   await play(3.2, u => {
-    camera.fov = 1 - smooth(0, 1, u) * .62;
+    camera.fov = 1 - smooth(0, 1, u) * .48;
   });
   await hold(2.6);
-  await play(1.4, u => { camera.fov = .38 + smooth(0, 1, u) * .62; });
+  await play(1.4, u => { camera.fov = .52 + smooth(0, 1, u) * .48; });
   camera.fov = 1;
 };
 

@@ -59,7 +59,7 @@
     <div class="hp-bar"><i id="barHp"></i></div>
   </section>
   <section id="route" aria-label="진행도">
-    <div class="big"><span id="vDist">3.60</span><span class="unit">km</span></div>
+    <div class="big"><span id="vDist">5.40</span><span class="unit">km</span></div>
     <div class="label">민가까지 남은 거리</div>
     <div class="track"><div class="done" id="tDone"></div><div class="me" id="tMe"></div><div class="home"></div></div>
     <div class="ends label"><span>추락 지점</span><span>민가</span></div>
@@ -106,6 +106,7 @@ const noise = (x, y) => {
 };
 const fbm = (x, y) => noise(x, y) * .5 + noise(x * 2.1, y * 2.1) * .3 + noise(x * 4.3, y * 4.3) * .2;
 
+const pathHalf = z => 3 + fbm(z * .035, 7.3) * 3.2;
 const pathX = z => 7 * Math.sin(z * .028) + 2 * Math.sin(z * .07);
 const groundY = (x, z) => {
   const dx = x - pathX(z), d = Math.abs(dx);
@@ -115,7 +116,7 @@ const groundY = (x, z) => {
 };
 
 const VILLAGE_Z = 170, VILLAGE_X = 34;
-const TOTAL = 3600, SPEED = 12, HALF_WIDTH = 3.4;
+const TOTAL = 5400, SPEED = 18;
 let skyMesh, snowPs;
 const glows = [];
 const canvas = document.getElementById('c');
@@ -280,92 +281,83 @@ function buildPlant(opts) {
 const plantMat = lit('rime', 1, 1, 1, .78);
 plantMat.backFaceCulling = false;
 
+// 인스턴스 배치: 지나간 것은 앞으로 옮기고, 달릴 때는 뒤와 옆의 시야 밖을 그리지 않는다.
 const plantField = (mesh, o) => {
-  const buf = new Float32Array(o.count * 16), items = [];
+  const all = new Float32Array(o.count * 16), shown = new Float32Array(o.count * 16), items = [];
   const spawn = (it, z, first) => {
     let x;
     for (let tries = 0; tries < 12; tries++) {
-      x = pathX(z) + (rnd() < .5 ? -1 : 1) * rnd(o.dMin, o.dMax);
+      const side = rnd() < .5 ? -1 : 1;
+      x = pathX(z) + side * (o.edge ? pathHalf(z) + rnd(o.dMin, o.dMax) : rnd(o.dMin, o.dMax));
       // 시작 지점에서 민가 불빛이 보이도록 처음 배치할 때만 시야를 비운다.
       if (!first || z < 12 || z > VILLAGE_Z + 20 || Math.abs(x - VILLAGE_X * z / VILLAGE_Z) > 6 + z * .07) break;
       z += 3;
     }
-    it.z = z;
+    it.z = z; it.x = x;
     const s = rnd(o.sMin, o.sMax);
-    B.Matrix.Compose(new B.Vector3(s, s * rnd(.9, 1.15), s), B.Quaternion.RotationAxis(B.Axis.Y, rnd(0, 6.28)),
-      new B.Vector3(x, groundY(x, z) - .1, z)).copyToArray(buf, it.i * 16);
+    B.Matrix.Compose(new B.Vector3(s * rnd(.8, 1.25), s * rnd(.75, 1.15), s * rnd(.8, 1.25)), B.Quaternion.RotationAxis(B.Axis.Y, rnd(0, 6.28)),
+      new B.Vector3(x, groundY(x, z) - (o.sink || .1) * s, z)).copyToArray(all, it.i * 16);
   };
-  for (let i = 0; i < o.count; i++) { const it = { i, z: 0 }; items.push(it); spawn(it, rnd(-15, o.span - 15), true); }
-  mesh.thinInstanceSetBuffer('matrix', buf, 16, false);
+  for (let i = 0; i < o.count; i++) { const it = { i, z: 0, x: 0 }; items.push(it); spawn(it, rnd(-15, o.span - 15), true); }
+  shown.set(all);
+  mesh.thinInstanceSetBuffer('matrix', shown, 16, false);
   mesh.alwaysSelectAsActiveMesh = true;
   mesh.material = plantMat;
   mesh.receiveShadows = true;
-  return camZ => {
+  let frame = Math.floor(rnd(0, 8));
+  return (camZ, camX, cull) => {
     let dirty = false;
-    for (const it of items) if (it.z < camZ - 15) { spawn(it, it.z + o.span); dirty = true; }
-    if (dirty) mesh.thinInstanceBufferUpdated('matrix');
+    for (const it of items) if (it.z < camZ - (cull ? 4 : 15)) { spawn(it, it.z + o.span); dirty = true; }
+    if (!dirty && (!cull || ++frame % 8)) return;
+    let n = 0;
+    for (const it of items) {
+      const dz = it.z - camZ;
+      if (cull && (dz < -3 || Math.abs(it.x - camX) > dz * 2 + 18)) continue;
+      shown.set(all.subarray(it.i * 16, it.i * 16 + 16), n * 16);
+      n++;
+    }
+    mesh.thinInstanceBufferUpdated('matrix');
+    mesh.thinInstanceCount = n;
   };
+};
+
+// 바위: 찌그러뜨린 구에 위쪽만 눈을 얹는다.
+const buildRock = name => {
+  const m = B.MeshBuilder.CreateIcoSphere(name, { radius: 1, subdivisions: 3, updatable: true }, scene);
+  const p = m.getVerticesData('position'), idx = m.getIndices(), n = [], c = [];
+  for (let i = 0; i < p.length; i += 3) {
+    const k = .68 + fbm(p[i] * 1.6 + 5, p[i + 2] * 1.6 + p[i + 1] * 1.4) * .75;
+    p[i] *= k; p[i + 1] *= k * .78; p[i + 2] *= k;
+  }
+  B.VertexData.ComputeNormals(p, idx, n);
+  for (let i = 0; i < p.length; i += 3) {
+    const w = smooth(.18, .62, n[i + 1] + (noise(p[i] * 5, p[i + 2] * 5) - .5) * .5);
+    const g = .055 + noise(p[i] * 9, p[i + 2] * 9) * .05;
+    c.push(g + w * .8, g + w * .84, g + w * .9, 1);
+  }
+  m.updateVerticesData('position', p);
+  m.updateVerticesData('normal', n);
+  m.setVerticesData('color', c, false, 4);
+  return m;
 };
 
 const heroTree = buildPlant({ name: 'hero', depth: 6, stems: 3, len: 2.5, radius: .13, spread: .62, lean: .22, barkDepth: 5, needles: 24 });
 const farTree = buildPlant({ name: 'far', depth: 4, stems: 3, len: 3, radius: .17, spread: .72, lean: .22, barkDepth: 4, needles: 0 });
 const shrub = buildPlant({ name: 'shrub', depth: 5, stems: 7, len: .72, radius: .022, spread: .8, lean: .55, barkDepth: 5, needles: 18 });
+const edgeRock = buildRock('edgeRock');
 const fields = [
-  plantField(heroTree, { count: 60, span: 100, dMin: 8, dMax: 22, sMin: .9, sMax: 1.35 }),
-  plantField(farTree, { count: 1000, span: 310, dMin: 14, dMax: 72, sMin: .9, sMax: 1.5 }),
-  plantField(shrub, { count: 170, span: 115, dMin: 5, dMax: 9.5, sMin: .8, sMax: 1.5 }),
+  plantField(heroTree, { count: 56, span: 96, dMin: .9, dMax: 11, edge: true, sMin: .85, sMax: 1.35 }),
+  plantField(farTree, { count: 900, span: 310, dMin: 12, dMax: 72, sMin: .9, sMax: 1.5 }),
+  plantField(shrub, { count: 150, span: 110, dMin: .5, dMax: 4, edge: true, sMin: .7, sMax: 1.4 }),
+  plantField(edgeRock, { count: 130, span: 110, dMin: .35, dMax: 2.6, edge: true, sMin: .4, sMax: 1.25, sink: .28 }),
 ];
 shadow.addShadowCaster(heroTree);
 shadow.addShadowCaster(shrub);
+shadow.addShadowCaster(edgeRock);
 
-// 울타리: 구간마다 기둥과 난간을 인스턴스로 그린다.
-const FENCE_GAP = 3.2, FENCE_N = 34, FENCE_X = 4.2;
-const fenceMesh = (name, r, h, mat, per) => {
-  const m = B.MeshBuilder.CreateCylinder(name, { diameter: r * 2, height: h, tessellation: 8 }, scene);
-  m.material = mat; m.receiveShadows = true; m.alwaysSelectAsActiveMesh = true;
-  m.buf = new Float32Array(FENCE_N * 2 * per * 16);
-  m.thinInstanceSetBuffer('matrix', m.buf, 16, false);
-  shadow.addShadowCaster(m);
-  return m;
-};
-const postMat = lit('post', .03, .028, .03, .55), railSnow = lit('railSnow', .88, .92, 1, .8);
-const posts = fenceMesh('posts', .065, 1, postMat, 1), caps = fenceMesh('caps', .07, .07, railSnow, 1);
-const rails = fenceMesh('rails', .03, 1, postMat, 2), railTops = fenceMesh('railTops', .03, 1, railSnow, 1);
-const beam = (m, i, a, b) => {
-  const d = b.subtract(a), len = d.length(), q = new B.Quaternion();
-  B.Quaternion.FromUnitVectorsToRef(B.Axis.Y, d.scale(1 / len), q);
-  B.Matrix.Compose(new B.Vector3(1, len / m.unit, 1), q, a.add(b).scale(.5)).copyToArray(m.buf, i * 16);
-};
-[posts, caps, rails, railTops].forEach(m => { m.unit = 1; });
-caps.unit = .07;
-const fencePoint = (side, z, up) => {
-  const x = pathX(z) + side * FENCE_X;
-  return new B.Vector3(x, groundY(x, z) + up, z);
-};
-const fenceSegs = [];
-const placeSeg = (seg, z) => {
-  seg.z = z;
-  const n = z + FENCE_GAP, i = seg.i;
-  beam(posts, i, fencePoint(seg.side, z, -.3), fencePoint(seg.side, z, 1.1));
-  beam(caps, i, fencePoint(seg.side, z, 1.1), fencePoint(seg.side, z, 1.17));
-  beam(rails, i * 2, fencePoint(seg.side, z, 1.02), fencePoint(seg.side, n, 1.02));
-  beam(rails, i * 2 + 1, fencePoint(seg.side, z, .55), fencePoint(seg.side, n, .55));
-  beam(railTops, i, fencePoint(seg.side, z, 1.05), fencePoint(seg.side, n, 1.05));
-};
-for (let s = 0; s < 2; s++) for (let k = 0; k < FENCE_N; k++) {
-  const seg = { i: fenceSegs.length, side: s ? 1 : -1, z: 0 };
-  fenceSegs.push(seg);
-  placeSeg(seg, 14 + k * FENCE_GAP);
-}
-const fenceBufs = [posts, caps, rails, railTops];
-fenceBufs.forEach(m => m.thinInstanceBufferUpdated('matrix'));
-
-const updateWorld = camZ => {
+const updateWorld = (camZ, camX, cull) => {
   for (const m of chunks) if (m.zStart + CH < camZ - 12) buildChunk(m, m.zStart + CH * CHUNKS);
-  fields.forEach(f => f(camZ));
-  let dirty = false;
-  for (const seg of fenceSegs) if (seg.z < camZ - 8) { placeSeg(seg, seg.z + FENCE_GAP * FENCE_N); dirty = true; }
-  if (dirty) fenceBufs.forEach(m => m.thinInstanceBufferUpdated('matrix'));
+  fields.forEach(f => f(camZ, camX, cull));
 };
 
 // 먼 하늘, 봉우리, 계곡 아래 마을을 렌더링한 배경 이미지
@@ -417,6 +409,15 @@ skyMesh.applyFog = false;
   ps.blendMode = B.ParticleSystem.BLENDMODE_ADD;
   ps.preWarmCycles = 600; ps.preWarmStepOffset = 4;
   ps.start();
+  ps.billboardMode = B.ParticleSystem.BILLBOARDMODE_STRETCHED;
+  ps.minEmitBox = new B.Vector3(-16, -2, 3);
+  ps.maxEmitBox = new B.Vector3(16, 10, 58);
+  ps.minSize = .012; ps.maxSize = .032;
+  ps.minScaleY = 3; ps.maxScaleY = 7;
+  ps.minLifeTime = 2; ps.maxLifeTime = 3.4; ps.emitRate = 1300;
+  ps.direction1 = new B.Vector3(-.6, -.5, -8); ps.direction2 = new B.Vector3(.6, -1, -5);
+  ps.minEmitPower = 1; ps.maxEmitPower = 1.3;
+  ps.preWarmCycles = 200;
   snowPs = ps;
 }
 
@@ -448,10 +449,11 @@ const updateRun = dt => {
   S.z = Math.min(TOTAL, S.z + SPEED * Math.min(1, .25 + S.t / 2.5) * dt);
   const dir = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0);
   S.v += (dir * 7 - S.v) * Math.min(1, dt * 7);
-  S.u = clamp(S.u + S.v * dt, -HALF_WIDTH, HALF_WIDTH);
-  if (Math.abs(S.u) === HALF_WIDTH) S.v = 0;
+  const lim = pathHalf(S.z) - .5;
+  S.u = clamp(S.u + S.v * dt, -lim, lim);
+  if (Math.abs(S.u) === lim) S.v *= .4;
   const x = pathX(S.z) + S.u;
-  cur.pos.set(x, groundY(x, S.z) + 1.25 + Math.sin(S.t * 5) * .012, S.z);
+  cur.pos.set(x, groundY(x, S.z) + 1.25 + Math.sin(S.t * 7) * .018, S.z);
   const ahead = S.z + 16, ax = pathX(ahead) + S.u * .75;
   cur.look.set(ax, groundY(ax, ahead) + 1.1, ahead);
   cur.roll = -S.v * .012;
@@ -549,6 +551,24 @@ const setPart = (part, pose, k, wob) => {
 };
 const updateBody = (dt, time) => {
   const k = Math.min(1, dt * bodyPose.rate), flail = bodyPose.arm === POSES.fallArm ? 1 : 0;
+  if (S.mode === 'run') {
+    const pump = (S.speed || SPEED) / SPEED * 4.2;
+    S.pump = (S.pump || 0) + pump * dt;
+    arms.forEach((a, i) => {
+      const swing = Math.sin(S.pump + i * Math.PI);
+      setPart(a, bodyPose.arm, Math.min(1, dt * 14), 0);
+      a.mesh.position.z += swing * .1;
+      a.mesh.position.y += Math.max(0, swing) * .06;
+      a.mesh.rotation.x += swing * .3;
+      a.mesh.position.x += -S.v * .009;
+    });
+    skis.forEach(sk => {
+      sk.mesh.position.set(sk.side * .2 + S.v * .006, -1.16, 1.6);
+      sk.mesh.rotation.y = S.v * .022;
+      sk.mesh.rotation.z = -S.v * .012;
+    });
+    return;
+  }
   arms.forEach((a, i) => setPart(a, bodyPose.arm, k, flail ? Math.sin(time * 9 + i * 2) * 1.6 : Math.sin(time * (bodyPose.wob ? 11 : 2) + i * 2) * (bodyPose.wob ? .8 : .08)));
   legs.forEach((l, i) => setPart(l, bodyPose.leg, k, flail ? Math.sin(time * 7 + i * 3) * 1.2 : 0));
   skis.forEach(sk => {
@@ -932,7 +952,14 @@ const runIntro = async () => {
   wearSkis(true);
   startRun();
 };
-runIntro();
+if (location.hash === '#run') {
+  setAir(false); gift.setEnabled(false); giftWreck.setEnabled(false);
+  hole.setEnabled(false); rim.setEnabled(false); parts.forEach(k => k.m.setEnabled(false));
+  cabin.setEnabled(false); legs.forEach(l => l.boot.setEnabled(true));
+  $('fade').style.opacity = 0; S.z = 8;
+  bodyPose.arm = POSES.skiArm; bodyPose.leg = POSES.hideLeg;
+  wearSkis(true); startRun();
+} else runIntro();
 
 const fps = $('fps');
 let frames = 0, clock = 0;
@@ -947,10 +974,17 @@ engine.runRenderLoop(() => {
   camera.position.copyFrom(cur.pos).addInPlaceFromFloats(rnd(-pose.shake, pose.shake), rnd(-pose.shake, pose.shake), 0);
   camera.setTarget(cur.look);
   camera.rotation.z = cur.roll;
+  if (S.mode === 'run') {
+    const speedK = (S.speed || SPEED) / SPEED;
+    camera.fov += (1 + (speedK - 1) * .28 - camera.fov) * Math.min(1, dt * 4);
+    camera.position.addInPlaceFromFloats(rnd(-.006, .006) * speedK, rnd(-.006, .006) * speedK, 0);
+  }
   lantern.position.copyFrom(cur.pos).addInPlaceFromFloats(.3, -.2, 0);
   lantern.direction.copyFrom(cur.look.subtract(cur.pos).normalize()).addInPlaceFromFloats(0, -.2, 0);
-  updateWorld(S.z);
-  snowPs.emitter.set(cur.pos.x, cur.pos.y + 9, cur.pos.z + 12);
+  updateWorld(S.z, cur.pos.x, S.mode === 'run');
+  snowPs.emitter.set(cur.pos.x, cur.pos.y, cur.pos.z);
+  const gust = Math.sin(clock * .37) * 5 + Math.sin(clock * 1.3 + 1) * 2.2;
+  snowPs.gravity.set(gust, -1.4, Math.sin(clock * .21) * 1.5);
   skyMesh.position.set(cur.pos.x + 90, cur.pos.y + 60, cur.pos.z + 560);
   for (const g of glows) g.mesh.position.set(cur.pos.x + 34.2 + g.dx, cur.pos.y - 17 + g.dy, cur.pos.z + VILLAGE_Z);
   updateHud();

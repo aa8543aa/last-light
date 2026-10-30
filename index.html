@@ -9,6 +9,7 @@
   canvas { width: 100%; height: 100%; display: block; }
   #hud { opacity: 0; transition: opacity 1.2s; }
   #hud.on { opacity: 1; }
+  #c { transition: filter 3.5s; }
   #flash { position: fixed; inset: 0; background: #ffd9a6; opacity: 0; pointer-events: none; }
   #fade { position: fixed; inset: 0; background: #000; opacity: 1; transition: opacity 1.4s; pointer-events: none; }
   #hurt { position: fixed; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(circle, rgba(170,20,10,0) 42%, rgba(170,20,10,.7) 100%); }
@@ -125,6 +126,7 @@ const VILLAGE_Z = 170, VILLAGE_X = 34;
 const TOTAL = 8100, SPEED = 27;
 let skyMesh, snowPs;
 const glows = [];
+let village;
 const RING_YAW = 2.2;
 // 코스를 가로지르는 깊은 틈. 부스트하며 점프해야 건너간다.
 const GAP_LEN = 24, GAP_DEPTH = 70;
@@ -625,6 +627,7 @@ skyFloor.rotation.x = Math.PI / 2; skyFloor.material = floorMat;
   gl.billboardMode = B.Mesh.BILLBOARDMODE_ALL;
   gl.material = m;
   glows.push({ mesh: gl, dx: 0, dy: 0 });
+  village = glows[0];
 }
 
 // 내리는 눈
@@ -650,7 +653,7 @@ skyFloor.rotation.x = Math.PI / 2; skyFloor.material = floorMat;
   ps.maxEmitBox = new B.Vector3(16, 10, 58);
   ps.minSize = .022; ps.maxSize = .06;
   ps.minScaleY = 2.2; ps.maxScaleY = 5;
-  ps.minLifeTime = 2; ps.maxLifeTime = 3.4; ps.emitRate = 1800;
+  ps.minLifeTime = 2; ps.maxLifeTime = 3.4; ps.emitRate = 800;
   ps.direction1 = new B.Vector3(-.6, -.5, -8); ps.direction2 = new B.Vector3(.6, -1, -5);
   ps.minEmitPower = 1; ps.maxEmitPower = 1.3;
   ps.preWarmCycles = 200;
@@ -663,9 +666,9 @@ flakePs.particleTexture = snowPs.particleTexture;
 flakePs.emitter = camera.position.clone();
 flakePs.minEmitBox = new B.Vector3(-13, 6, -2);
 flakePs.maxEmitBox = new B.Vector3(13, 11, 34);
-flakePs.color1 = new B.Color4(1, 1, 1, .95); flakePs.color2 = new B.Color4(.85, .91, 1, .65); flakePs.colorDead = new B.Color4(.8, .88, 1, 0);
-flakePs.minSize = .035; flakePs.maxSize = .1;
-flakePs.minLifeTime = 4.5; flakePs.maxLifeTime = 7.5; flakePs.emitRate = 420;
+flakePs.color1 = new B.Color4(1, 1, 1, .7); flakePs.color2 = new B.Color4(.85, .91, 1, .45); flakePs.colorDead = new B.Color4(.8, .88, 1, 0);
+flakePs.minSize = .03; flakePs.maxSize = .07;
+flakePs.minLifeTime = 4.5; flakePs.maxLifeTime = 7.5; flakePs.emitRate = 240;
 flakePs.gravity = new B.Vector3(0, -.35, 0);
 flakePs.direction1 = new B.Vector3(-.4, -1.5, -.4); flakePs.direction2 = new B.Vector3(.4, -2, .4);
 flakePs.minEmitPower = 1; flakePs.maxEmitPower = 1.2;
@@ -1018,6 +1021,13 @@ const updateKits = dt => {
 };
 S.kits = kits;
 
+// 마우스 위치로 주변과 하늘을 둘러본다. 커서를 위로 올리면 하늘을 본다.
+addEventListener('mousemove', e => {
+  S.yawT = (e.clientX / innerWidth - .5) * 2.2;
+  const v = .5 - e.clientY / innerHeight;
+  S.pitchT = v > 0 ? v * 2.4 : v * .6;
+});
+
 const startRun = () => {
   S.mode = 'run'; S.v = 0; S.t = 0;
   $('skip').style.display = 'none';
@@ -1363,6 +1373,7 @@ const lookAt = (x, y, z) => pose.look.set(x, y, z);
 // 깊은 눈 속에서 깨어나 밖으로 기어 나온다.
 const introWake = async () => {
   hole.setEnabled(true); rim.setEnabled(true);
+  canvas.style.filter = 'blur(9px)';
   bodyPose.arm = POSES.hideArm; bodyPose.leg = POSES.hideLeg;
   scene.fogDensity = .013;
   cur.pos.set(landX, landY - 2.5, -.1);
@@ -1377,6 +1388,7 @@ const introWake = async () => {
   fade.style.opacity = .2; await hold(1.3);
   fade.style.opacity = .8; await hold(.7);
   fade.style.opacity = 0; await hold(1.6);
+  canvas.style.filter = 'blur(4px)';
   bodyPose.rate = 3;
   bodyPose.arm = POSES.climbArm;
   const startY = cur.pos.y, endY = landY + .9;
@@ -1400,17 +1412,43 @@ const introWake = async () => {
 
 // 주변을 둘러보고, 선물을 줍고, 먼 불빛을 발견한다.
 const introDiscover = async () => {
-  lookAt(landX - 11, landY + 1, 13); await hold(2.8);
-  lookAt(landX + 10, landY, 11); await hold(2.6);
-  lookAt(landX - .55, landY - .3, 3.1); pose.rate = 1.8; standAt(landX - .3, 1.8, 1); await hold(1.8);
+  const dazed = fn => (u, dt) => { pose.roll = Math.sin(clock * 1.3) * .05; if (fn) fn(u, dt); };
+  // 숨을 고르며 천천히 정신을 차린다.
+  pose.rate = .9;
+  lookAt(landX + 1.5, landY + .4, 8);
+  await play(2.6, dazed());
+  canvas.style.filter = 'blur(1.6px)';
+  // 왼쪽의 동체, 오른쪽의 날개를 둘러본다.
+  lookAt(landX - 11, landY + 1, 13);
+  await play(3.2, dazed());
+  canvas.style.filter = 'none';
+  lookAt(landX + 10, landY, 11);
+  await play(3, dazed());
+  // 눈 위에 떨어진 선물을 줍는다.
+  lookAt(landX - .55, landY - .3, 3.1); pose.rate = 1.8; standAt(landX - .3, 1.8, 1);
+  await hold(1.8);
   bodyPose.arm = POSES.reachArm; await hold(1);
   giftWreck.setEnabled(false);
   gift.setEnabled(true); gift.parent = camera; gift.position.set(0, -.3, .55);
   bodyPose.arm = POSES.seatArm; await hold(1.7);
   gift.setEnabled(false);
   bodyPose.arm = POSES.hideArm;
-  standAt(landX, 2.2); pose.rate = .9;
-  lookAt(landX + VILLAGE_X, cur.pos.y - 5, VILLAGE_Z); await hold(4.4);
+  // 일어나 멀리 눈을 돌리면 산자락에 불빛이 보인다.
+  standAt(landX, 2.2); pose.rate = .55; pose.roll = 0;
+  const vx = cur.pos.x + 34.2, vz = VILLAGE_Z + 2;
+  lookAt(vx, cur.pos.y - 5, vz);
+  village.mesh.renderingGroupId = 1;
+  await hold(3.4);
+  // 불빛을 알아보고 시선이 고정된다.
+  await play(3.2, u => {
+    camera.fov = 1 - smooth(0, 1, u) * .62;
+    village.mesh.scaling.setAll(1 + smooth(0, 1, u) * .15);
+  });
+  await hold(2.6);
+  await play(1.4, u => { camera.fov = .38 + smooth(0, 1, u) * .62; });
+  camera.fov = 1;
+  village.mesh.renderingGroupId = 0;
+  village.mesh.scaling.setAll(1);
 };
 
 // 잔해를 모아 엉성한 스키를 묶고, 묶는 순간 바로 출발한다.
@@ -1486,6 +1524,8 @@ const introChase = async () => {
   bodyPose.arm = POSES.skiArm;
 };
 S.introChase = introChase;
+S.introDiscover = introDiscover;
+S.pose = pose;
 
 const runIntro = async () => {
   await introCabin();
@@ -1501,6 +1541,8 @@ const runIntro = async () => {
 };
 const jumpToRun = () => {
   anim = null; pose.on = false; pose.shake = 0;
+  canvas.style.filter = 'none';
+  village.mesh.renderingGroupId = 0; village.mesh.scaling.setAll(1);
   chasers.forEach(c => c.root.setEnabled(false));
   setAir(false);
   gift.setEnabled(false); giftWreck.setEnabled(false);
@@ -1546,9 +1588,9 @@ engine.runRenderLoop(() => {
   camera.position.copyFrom(cur.pos).addInPlaceFromFloats(rnd(-pose.shake, pose.shake), rnd(-pose.shake, pose.shake), 0);
   camera.setTarget(cur.look);
   camera.rotation.z = cur.roll;
-  S.idle = (S.idle || 0) + dt;
-  if (S.mode !== 'run') { S.yaw = 0; S.pitch = 0; }
-  if (S.idle > 1.6) { const back = Math.min(1, dt * 1.6); S.yaw -= S.yaw * back; S.pitch -= S.pitch * back; }
+  const lookK = Math.min(1, dt * 6);
+  S.yaw += ((S.mode === 'run' ? S.yawT || 0 : 0) - S.yaw) * lookK;
+  S.pitch += ((S.mode === 'run' ? S.pitchT || 0 : 0) - S.pitch) * lookK;
   camera.rotation.y += S.yaw;
   camera.rotation.x -= S.pitch;
   if (S.mode === 'run') {

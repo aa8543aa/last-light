@@ -1125,11 +1125,12 @@ const limb = (name, radius, height, mat) => {
   return m;
 };
 const makeArm = side => {
-  const profile = [new B.Vector3(0, -.31, 0)];
-  for (let k = 0; k <= 20; k++) {
-    const t = k / 20, y = -.3 + t * .56;
-    const fold = Math.sin(t * 17 + side) * .0016 + Math.sin(t * 43) * .0007;
-    const r = .056 - t * .021 + fold - (t > .9 ? (t - .9) * .05 : 0);
+  // 어깨까지 길게 이어 화면 안에 잘린 끝이 보이지 않게 한다.
+  const profile = [new B.Vector3(0, -1.5, 0)];
+  for (let k = 0; k <= 40; k++) {
+    const t = k / 40, y = -1.48 + t * 1.74;
+    const fold = Math.sin(t * 40 + side) * .0014 + Math.sin(t * 97) * .0006;
+    const r = .1 - t * .065 + fold - (t > .96 ? (t - .96) * .12 : 0);
     profile.push(new B.Vector3(r, y, 0));
   }
   const arm = B.MeshBuilder.CreateLathe('sleeve', { shape: profile, tessellation: 18, closed: false, sideOrientation: B.Mesh.DOUBLESIDE }, scene);

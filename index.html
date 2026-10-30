@@ -759,10 +759,55 @@ const $ = id => document.getElementById(id);
 const JUMP_COST = 10, JUMP_POWER = 6.2, GRAVITY = 16;
 const S = { yaw: 0, pitch: 0, mode: 'intro', z: LAND_Z, u: 0, v: 0, t: 0, hp: 100, coins: 0, st: 100, y: 0, vy: 0, speed: SPEED, slow: 1 };
 const keys = {};
+// 사운드: 파일 없이 소음과 발진기로 합성한다. 브라우저 정책상 첫 입력 때 시작한다.
+const sound = (() => {
+  let ctx, windGain, skiGain, humGain, windFilter;
+  const start = () => {
+    if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    ctx = new AC();
+    const buf = ctx.createBuffer(1, ctx.sampleRate * 3, ctx.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    const loop = (type, freq, q) => {
+      const src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+      src.buffer = buf; src.loop = true; f.type = type; f.frequency.value = freq; f.Q.value = q; g.gain.value = 0;
+      src.connect(f); f.connect(g); g.connect(ctx.destination); src.start();
+      return { f, g };
+    };
+    const w = loop('lowpass', 500, .4), sk = loop('bandpass', 2600, .7), hum = loop('lowpass', 150, .5);
+    windGain = w.g; windFilter = w.f; skiGain = sk.g; humGain = hum.g;
+  };
+  const tone = (freq, dur, vol, type = 'sine', slide = 1) => {
+    if (!ctx) return;
+    const o = ctx.createOscillator(), g = ctx.createGain(), t = ctx.currentTime;
+    o.type = type; o.frequency.setValueAtTime(freq, t); o.frequency.exponentialRampToValueAtTime(freq * slide, t + dur);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0008, t + dur);
+    o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t + dur);
+  };
+  return {
+    start,
+    coin: () => { tone(1320, .09, .1); setTimeout(() => tone(1760, .16, .08), 70); },
+    heal: () => { tone(660, .16, .1); setTimeout(() => tone(990, .26, .09), 110); },
+    jump: () => tone(240, .22, .08, 'triangle', 2),
+    hit: () => tone(120, .3, .3, 'sawtooth', .4),
+    boom: () => { tone(70, 1.5, .55, 'sawtooth', .3); tone(38, 2.2, .5, 'sine', .6); },
+    update: () => {
+      if (!ctx) return;
+      const t = ctx.currentTime, gust = Math.sin(clock * .37) * .5 + .5, run = S.mode === 'run' && S.y === 0;
+      windGain.gain.setTargetAtTime(S.air ? 0 : .035 + gust * .05 + (S.mode === 'run' ? .03 : 0), t, .3);
+      windFilter.frequency.setTargetAtTime(380 + gust * 420, t, .4);
+      skiGain.gain.setTargetAtTime(run ? .035 + S.speed * .0008 : 0, t, .08);
+      humGain.gain.setTargetAtTime(S.air ? .14 : 0, t, .25);
+    },
+  };
+})();
+addEventListener('keydown', sound.start);
+addEventListener('pointerdown', sound.start);
 addEventListener('keydown', e => {
   keys[e.code] = true;
   if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
-  if (e.code === 'Space' && S.mode === 'run' && S.y === 0 && S.st >= JUMP_COST) { S.vy = JUMP_POWER; S.y = .001; S.st -= JUMP_COST; }
+  if (e.code === 'Space' && S.mode === 'run' && S.y === 0 && S.st >= JUMP_COST) { S.vy = JUMP_POWER; sound.jump(); S.y = .001; S.st -= JUMP_COST; }
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
 
@@ -940,6 +985,7 @@ const spawnObstacles = () => {
 };
 const hurt = amount => {
   S.hp = Math.max(0, S.hp - amount);
+  sound.hit();
   $('hurt').style.transition = 'none';
   $('hurt').style.opacity = 1;
   requestAnimationFrame(() => { $('hurt').style.transition = 'opacity .9s'; $('hurt').style.opacity = 0; });
@@ -1066,6 +1112,7 @@ const updateCoins = () => {
     if (c.z < S.z - 3) { coins.splice(i, 1); continue; }
     if (Math.abs(c.z - S.z) < 1.5 && Math.abs(c.x - px) < 1 && S.y < 1.7) {
       S.coins++;
+      sound.coin();
       coins.splice(i, 1);
       continue;
     }
@@ -1116,6 +1163,7 @@ const updateKits = dt => {
     k.mesh.rotation.y += dt * 1.6;
     if (Math.abs(k.z - S.z) < 1.3 && Math.abs(k.x - px) < 1.15 && S.y < 1.6) {
       S.hp = Math.min(100, S.hp + 30);
+      sound.heal();
       k.on = false; k.mesh.setEnabled(false);
       burst(k.mesh.position, 60, new B.Color4(1, .85, .75, .9), new B.Color4(1, .35, .25, .4), .12, 2.5, snowPs.particleTexture);
     } else if (k.z < S.z - 5) { k.on = false; k.mesh.setEnabled(false); }
@@ -1475,6 +1523,7 @@ const introCabin = async () => {
 // 좌석에 앉은 채로 기체가 내 주변에서 조각나 날아간다.
 const introBreak = async () => {
   $('flash').style.opacity = .8;
+  sound.boom();
   const parts = cabin.getChildMeshes().filter(m => !(m.position.x > 1 && m.position.x < 1.5 && Math.abs(m.position.z - 1.1) < .4));
   parts.forEach(m => {
     const out = new B.Vector3(m.position.x, m.position.y - CABIN_Y, 0);
@@ -1787,6 +1836,7 @@ engine.runRenderLoop(() => {
   skyFloor.position.set(cur.pos.x, ring.position.y - RING_H * .36, cur.pos.z);
   mist.position.set(cur.pos.x, skyFloor.position.y + 6, cur.pos.z);
   updateHud();
+  sound.update();
   adaptResolution(dt);
   scene.render();
   if (++frames % 20 === 0) fps.textContent = `${engine.getFps().toFixed(0)} FPS | ${scene.getTotalVertices().toLocaleString()} verts`;

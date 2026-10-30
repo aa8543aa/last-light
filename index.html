@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>불빛을 향해</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  canvas { width: 100%; height: 100%; display: block; }
+  #hud { opacity: 0; transition: opacity 1.2s; }
+  #hud.on { opacity: 1; }
+  #cap { position: fixed; left: 50%; bottom: 17%; transform: translateX(-50%); width: min(92%, 680px); text-align: center; color: #eef2fa;
+    font: 300 clamp(17px, 2.2vw, 23px)/1.6 "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+    text-shadow: 0 1px 8px #000; opacity: 0; transition: opacity .8s; pointer-events: none; }
+  #cap.on { opacity: 1; }
+  #fps { position: fixed; bottom: 4px; left: 50%; transform: translateX(-50%); color: #fff; font: 11px monospace; opacity: .35; }
+  #hud {
+    --ink: #f2f5fb; --dim: rgba(226,233,247,.62); --line: rgba(226,233,247,.26);
+    --hp: #f4efe6; --warn: #e2604c; --warm: #ffc27a;
+    position: fixed; inset: 0; pointer-events: none; color: var(--ink);
+    font-family: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+    font-variant-numeric: tabular-nums; text-shadow: 0 1px 6px rgba(0,0,0,.75);
+    padding: clamp(14px, 2.6vw, 34px); box-sizing: border-box;
+    display: grid; grid-template: auto 1fr auto / 1fr minmax(0, 2fr) 1fr; gap: 12px;
+  }
+  .label { font-size: 11px; letter-spacing: .08em; color: var(--dim); }
+  .big { font-size: clamp(20px, 2.4vw, 30px); font-weight: 300; line-height: 1.15; }
+  .unit { font-size: .55em; color: var(--dim); margin-left: 2px; }
+  #hp { width: min(100%, 220px); }
+  .hp-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+  .hp-bar { height: 4px; background: var(--line); }
+  .hp-bar i { display: block; height: 100%; width: 100%; background: var(--hp); box-shadow: 0 0 8px rgba(244,239,230,.45); }
+  #route { justify-self: center; width: min(100%, 460px); text-align: center; }
+  .track { position: relative; height: 1px; margin: 12px 0 7px; background: var(--line); }
+  .track .done { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--ink); }
+  .track .me { position: absolute; left: 0; top: -4px; width: 7px; height: 7px; margin-left: -4px; border-radius: 50%; background: var(--ink); box-shadow: 0 0 6px rgba(255,255,255,.8); }
+  .track .home { position: absolute; right: -3px; top: -3px; width: 6px; height: 6px; border-radius: 50%; background: var(--warm); box-shadow: 0 0 10px 3px rgba(255,170,90,.75); }
+  .ends { display: flex; justify-content: space-between; }
+  #stats { justify-self: end; display: flex; gap: clamp(14px, 2vw, 26px); text-align: right; }
+  #axe { grid-row: 3; grid-column: 1; align-self: end; display: flex; align-items: center; gap: 10px; }
+  #axe svg { width: 34px; height: 34px; }
+  .pips { display: flex; gap: 3px; margin-top: 5px; }
+  .pips i { width: 16px; height: 4px; background: var(--ink); }
+  .pips i.off { background: var(--line); }
+  #keys { grid-row: 3; grid-column: 3; align-self: end; justify-self: end; display: flex; gap: 14px; font-size: 12px; color: var(--dim); }
+  kbd { font: inherit; color: var(--ink); border: 1px solid var(--line); border-radius: 3px; padding: 1px 6px; margin-right: 4px; background: rgba(5,10,20,.3); }
+  @media (max-width: 640px) {
+    #hud { grid-template: auto auto 1fr auto / 1fr 1fr; }
+    #route { grid-column: 1 / -1; grid-row: 2; width: 100%; }
+    #stats { grid-column: 2; grid-row: 1; }
+    #axe { grid-row: 4; }
+    #keys { grid-row: 4; grid-column: 2; flex-direction: column; align-items: flex-end; gap: 6px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+  <section id="hp" aria-label="체력">
+    <div class="hp-row"><span class="label">체력</span><span class="big" id="vHp">100</span></div>
+    <div class="hp-bar"><i id="barHp"></i></div>
+  </section>
+  <section id="route" aria-label="진행도">
+    <div class="big"><span id="vDist">3.60</span><span class="unit">km</span></div>
+    <div class="label">민가까지 남은 거리</div>
+    <div class="track"><div class="done" id="tDone"></div><div class="me" id="tMe"></div><div class="home"></div></div>
+    <div class="ends label"><span>추락 지점</span><span>민가</span></div>
+  </section>
+  <section id="stats" aria-label="기록">
+    <div><div class="label">시간</div><div class="big" id="vTime">00:00</div></div>
+    <div><div class="label">코인</div><div class="big" id="vCoin">0</div></div>
+    <div><div class="label">점수</div><div class="big" id="vScore">0</div></div>
+  </section>
+  <section id="axe" aria-label="무기">
+    <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M12 12 25 28"/><path d="M8 4c5 0 10 2 12 6-3 1-5 3-6 6C9 15 6 10 8 4Z" fill="currentColor" fill-opacity=".85"/>
+    </svg>
+    <div><div class="label">도끼</div><div class="pips"><i class="off"></i><i class="off"></i><i class="off"></i></div></div>
+  </section>
+  <section id="keys" aria-label="조작법">
+    <span><kbd>A</kbd><kbd>D</kbd>또는 <kbd>←</kbd><kbd>→</kbd>좌우 이동</span>
+  </section>
+</div>
+<div id="cap"></div>
+<div id="fps"></div>
+<script src="https://cdn.jsdelivr.net/npm/babylonjs@7.54.3/babylon.js"></script>
+<script>
+const B = BABYLON;
+
+// 항상 같은 장면이 나오도록 고정 시드 난수를 사용한다.
+let seed = 20261225;
+const rnd = (a = 0, b = 1) => {
+  seed = (seed * 1664525 + 1013904223) >>> 0;
+  return a + (seed / 4294967296) * (b - a);
+};
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const smooth = (a, b, v) => { const t = clamp((v - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const hash = (x, y) => { const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return s - Math.floor(s); };
+const noise = (x, y) => {
+  const i = Math.floor(x), j = Math.floor(y), f = x - i, g = y - j;
+  const u = f * f * (3 - 2 * f), v = g * g * (3 - 2 * g);
+  return (hash(i, j) * (1 - u) + hash(i + 1, j) * u) * (1 - v)
+       + (hash(i, j + 1) * (1 - u) + hash(i + 1, j + 1) * u) * v;
+};
+const fbm = (x, y) => noise(x, y) * .5 + noise(x * 2.1, y * 2.1) * .3 + noise(x * 4.3, y * 4.3) * .2;
+
+const pathX = z => 7 * Math.sin(z * .028) + 2 * Math.sin(z * .07);
+const groundY = (x, z) => {
+  const d = Math.abs(x - pathX(z));
+  return smooth(4, 10.5, d) * (1.1 + d * .05) + (fbm(x * .12, z * .12) - .5) * (.25 + smooth(3, 12, d) * 2.2) - z * .035;
+};
+
+const VILLAGE_Z = 170, VILLAGE_X = 34;
+const TOTAL = 3600, SPEED = 12, HALF_WIDTH = 3.4;
+let skyMesh, snowPs;
+const glows = [];
+const canvas = document.getElementById('c');
+const engine = new B.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true });
+const scene = new B.Scene(engine);
+scene.clearColor = new B.Color4(.012, .02, .04, 1);
+scene.fogMode = B.Scene.FOGMODE_EXP2;
+scene.fogColor = new B.Color3(.028, .045, .08);
+scene.fogDensity = .013;
+
+const camY = groundY(pathX(0), 0) + 1.3;
+const camera = new B.UniversalCamera('cam', new B.Vector3(pathX(0), camY, 0), scene);
+camera.setTarget(new B.Vector3(VILLAGE_X * 22 / VILLAGE_Z, camY + .9, 22));
+camera.fov = 1.0;
+camera.minZ = .1;
+camera.maxZ = 900;
+
+// 조명: 달빛, 하늘빛, 플레이어 앞의 약한 랜턴 빛
+const moon = new B.DirectionalLight('moon', new B.Vector3(-.72, -.62, .32).normalize(), scene);
+moon.diffuse = new B.Color3(.62, .74, 1);
+moon.intensity = 1.5;
+const hemi = new B.HemisphericLight('hemi', new B.Vector3(0, 1, 0), scene);
+hemi.diffuse = new B.Color3(.2, .3, .52);
+hemi.groundColor = new B.Color3(.08, .11, .2);
+hemi.specular = new B.Color3(0, 0, 0);
+hemi.intensity = .55;
+const lantern = new B.SpotLight('lantern', camera.position.add(new B.Vector3(.3, -.2, 0)),
+  new B.Vector3(0, -.2, 1).normalize(), 1.1, 3, scene);
+lantern.diffuse = new B.Color3(1, .74, .46);
+lantern.intensity = 16;
+lantern.range = 28;
+
+const shadow = new B.CascadedShadowGenerator(2048, moon);
+shadow.shadowMaxZ = 90;
+shadow.numCascades = 3;
+shadow.usePercentageCloserFiltering = true;
+shadow.lambda = .85;
+shadow.bias = .004;
+shadow.setDarkness(.42);
+
+// 눈 표면의 미세한 굴곡을 위한 노멀맵을 코드로 만든다.
+const normalTex = (() => {
+  const size = 1024, tex = new B.DynamicTexture('snowN', size, scene, true);
+  const ctx = tex.getContext(), img = ctx.createImageData(size, size);
+  const h = (x, y) => fbm(x * .02, y * .02) * 1.3 + fbm(x * .11, y * .11) * .35 + hash(x, y) * .025;
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const dx = (h(x + 1, y) - h(x - 1, y)) * 3, dy = (h(x, y + 1) - h(x, y - 1)) * 3;
+    const l = Math.hypot(dx, dy, 1), i = (y * size + x) * 4;
+    img.data[i] = (-dx / l * .5 + .5) * 255;
+    img.data[i + 1] = (-dy / l * .5 + .5) * 255;
+    img.data[i + 2] = (1 / l * .5 + .5) * 255;
+    img.data[i + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  tex.update(false);
+  tex.uScale = 15; tex.vScale = 9;
+  return tex;
+})();
+
+const lit = (name, r, g, b, rough) => {
+  const m = new B.PBRMaterial(name, scene);
+  m.albedoColor = new B.Color3(r, g, b);
+  m.metallic = 0;
+  m.roughness = rough;
+  m.maxSimultaneousLights = 4;
+  return m;
+};
+
+// 지면: 뒤로 지나간 조각을 앞으로 옮겨 높이를 다시 계산한다.
+const CH = 90, CHUNKS = 4;
+const snow = lit('snow', .84, .89, .98, .62);
+snow.bumpTexture = normalTex;
+const chunks = [];
+const buildChunk = (m, zStart) => {
+  m.position.z = zStart + CH / 2;
+  m.zStart = zStart;
+  const p = m.basePos.slice(), n = new Float32Array(p.length);
+  for (let i = 0; i < p.length; i += 3) {
+    const x = p[i], z = p[i + 2] + zStart + CH / 2;
+    p[i + 1] = groundY(x, z);
+    const nx = groundY(x - 1, z) - groundY(x + 1, z), nz = groundY(x, z - 1) - groundY(x, z + 1), l = Math.hypot(nx, 2, nz);
+    n[i] = nx / l; n[i + 1] = 2 / l; n[i + 2] = nz / l;
+  }
+  m.updateVerticesData('position', p);
+  m.updateVerticesData('normal', n);
+  m.refreshBoundingInfo();
+};
+for (let i = 0; i < CHUNKS; i++) {
+  const m = B.MeshBuilder.CreateGround('ground' + i, { width: 150, height: CH, subdivisionsX: 150, subdivisionsY: 90, updatable: true }, scene);
+  m.basePos = Float32Array.from(m.getVerticesData('position'));
+  m.material = snow; m.receiveShadows = true;
+  buildChunk(m, -20 + i * CH);
+  chunks.push(m);
+}
+
+// 재귀 가지 생성기: 위쪽은 상고대, 아래쪽과 굵은 줄기는 어두운 나무껍질 색이다.
+function buildPlant(opts) {
+  const pos = [], nor = [], col = [], ind = [];
+  const tube = (a, b, ra, rb, sides, snowAmt) => {
+    const d = b.subtract(a).normalize();
+    const u = B.Vector3.Cross(d, Math.abs(d.y) > .9 ? B.Axis.X : B.Axis.Y).normalize();
+    const v = B.Vector3.Cross(d, u);
+    const base = pos.length / 3;
+    for (let ring = 0; ring < 2; ring++) {
+      const c = ring ? b : a, r = ring ? rb : ra;
+      for (let s = 0; s < sides; s++) {
+        const t = s / sides * Math.PI * 2;
+        const nx = u.x * Math.cos(t) + v.x * Math.sin(t);
+        const ny = u.y * Math.cos(t) + v.y * Math.sin(t);
+        const nz = u.z * Math.cos(t) + v.z * Math.sin(t);
+        pos.push(c.x + nx * r, c.y + ny * r, c.z + nz * r);
+        nor.push(nx, ny, nz);
+        const w = clamp(snowAmt + ny * .75 + rnd(-.12, .12), 0, 1);
+        col.push(.035 + w * .86, .032 + w * .9, .034 + w * .96, 1);
+      }
+    }
+    for (let s = 0; s < sides; s++) {
+      const n = (s + 1) % sides;
+      ind.push(base + s, base + sides + s, base + n, base + n, base + sides + s, base + sides + n);
+    }
+  };
+  const flake = (c, size) => {
+    const base = pos.length / 3;
+    const nx = rnd(-.45, .45), ny = 1, nz = rnd(-.45, .45), l = Math.hypot(nx, ny, nz);
+    for (let i = 0; i < 3; i++) {
+      const a = i * 2.09 + rnd(-.5, .5);
+      pos.push(c.x + Math.cos(a) * size, c.y + rnd(-size, size), c.z + Math.sin(a) * size);
+      nor.push(nx / l, ny / l, nz / l);
+      const w = rnd(.82, 1);
+      col.push(w * .95, w * .97, w, 1);
+    }
+    ind.push(base, base + 1, base + 2);
+  };
+  const grow = (p, d, len, r, depth) => {
+    const end = p.add(d.scale(len));
+    tube(p, end, r, r * .68, depth > 3 ? 6 : depth > 1 ? 4 : 3, depth >= opts.barkDepth ? .1 : .68 + (opts.barkDepth - depth) * .1);
+    if (depth <= 2) for (let i = 0; i < opts.needles; i++) {
+      // 상고대 결정: 가지에서 바람 방향으로 뻗는 흰 침상 구조
+      const a = p.add(d.scale(rnd(0, len))).add(new B.Vector3(rnd(-.05, .05), rnd(-.02, .06), rnd(-.05, .05)));
+      flake(a, rnd(.008, .022));
+    }
+    if (depth === 0) return;
+    const kids = depth > opts.depth - 2 ? 2 + Math.round(rnd()) : 3;
+    for (let i = 0; i < kids; i++) {
+      const nd = d.add(new B.Vector3(rnd(-1, 1), rnd(-.35, .55), rnd(-1, 1)).scale(opts.spread)).normalize();
+      grow(p.add(d.scale(len * rnd(.5, 1))), nd, len * rnd(.62, .82), Math.max(r * .62, .006), depth - 1);
+    }
+    grow(end, d.add(new B.Vector3(rnd(-.3, .3), .05, rnd(-.3, .3))).normalize(), len * .78, r * .68, depth - 1);
+  };
+  for (let i = 0; i < opts.stems; i++) {
+    const a = rnd(0, 6.28), off = opts.stems > 1 ? rnd(.1, .5) : 0;
+    grow(new B.Vector3(Math.cos(a) * off, -.2, Math.sin(a) * off),
+      new B.Vector3(Math.cos(a) * opts.lean, 1, Math.sin(a) * opts.lean).normalize(),
+      opts.len, opts.radius, opts.depth);
+  }
+  const m = new B.Mesh(opts.name, scene), vd = new B.VertexData();
+  vd.positions = pos; vd.normals = nor; vd.colors = col; vd.indices = ind;
+  vd.applyToMesh(m);
+  return m;
+}
+
+const plantMat = lit('rime', 1, 1, 1, .78);
+plantMat.backFaceCulling = false;
+
+const plantField = (mesh, o) => {
+  const buf = new Float32Array(o.count * 16), items = [];
+  const spawn = (it, z, first) => {
+    let x;
+    for (let tries = 0; tries < 12; tries++) {
+      x = pathX(z) + (rnd() < .5 ? -1 : 1) * rnd(o.dMin, o.dMax);
+      // 시작 지점에서 민가 불빛이 보이도록 처음 배치할 때만 시야를 비운다.
+      if (!first || z < 12 || z > VILLAGE_Z + 20 || Math.abs(x - VILLAGE_X * z / VILLAGE_Z) > 6 + z * .07) break;
+      z += 3;
+    }
+    it.z = z;
+    const s = rnd(o.sMin, o.sMax);
+    B.Matrix.Compose(new B.Vector3(s, s * rnd(.9, 1.15), s), B.Quaternion.RotationAxis(B.Axis.Y, rnd(0, 6.28)),
+      new B.Vector3(x, groundY(x, z) - .1, z)).copyToArray(buf, it.i * 16);
+  };
+  for (let i = 0; i < o.count; i++) { const it = { i, z: 0 }; items.push(it); spawn(it, rnd(-15, o.span - 15), true); }
+  mesh.thinInstanceSetBuffer('matrix', buf, 16, false);
+  mesh.alwaysSelectAsActiveMesh = true;
+  mesh.material = plantMat;
+  mesh.receiveShadows = true;
+  return camZ => {
+    let dirty = false;
+    for (const it of items) if (it.z < camZ - 15) { spawn(it, it.z + o.span); dirty = true; }
+    if (dirty) mesh.thinInstanceBufferUpdated('matrix');
+  };
+};
+
+const heroTree = buildPlant({ name: 'hero', depth: 6, stems: 3, len: 2.5, radius: .13, spread: .62, lean: .22, barkDepth: 5, needles: 24 });
+const farTree = buildPlant({ name: 'far', depth: 4, stems: 3, len: 3, radius: .17, spread: .72, lean: .22, barkDepth: 4, needles: 0 });
+const shrub = buildPlant({ name: 'shrub', depth: 5, stems: 7, len: .72, radius: .022, spread: .8, lean: .55, barkDepth: 5, needles: 18 });
+const fields = [
+  plantField(heroTree, { count: 60, span: 100, dMin: 8, dMax: 22, sMin: .9, sMax: 1.35 }),
+  plantField(farTree, { count: 1000, span: 310, dMin: 14, dMax: 72, sMin: .9, sMax: 1.5 }),
+  plantField(shrub, { count: 170, span: 115, dMin: 5, dMax: 9.5, sMin: .8, sMax: 1.5 }),
+];
+shadow.addShadowCaster(heroTree);
+shadow.addShadowCaster(shrub);
+
+// 울타리: 구간마다 기둥과 난간을 인스턴스로 그린다.
+const FENCE_GAP = 3.2, FENCE_N = 34, FENCE_X = 4.2;
+const fenceMesh = (name, r, h, mat, per) => {
+  const m = B.MeshBuilder.CreateCylinder(name, { diameter: r * 2, height: h, tessellation: 8 }, scene);
+  m.material = mat; m.receiveShadows = true; m.alwaysSelectAsActiveMesh = true;
+  m.buf = new Float32Array(FENCE_N * 2 * per * 16);
+  m.thinInstanceSetBuffer('matrix', m.buf, 16, false);
+  shadow.addShadowCaster(m);
+  return m;
+};
+const postMat = lit('post', .03, .028, .03, .55), railSnow = lit('railSnow', .88, .92, 1, .8);
+const posts = fenceMesh('posts', .065, 1, postMat, 1), caps = fenceMesh('caps', .07, .07, railSnow, 1);
+const rails = fenceMesh('rails', .03, 1, postMat, 2), railTops = fenceMesh('railTops', .03, 1, railSnow, 1);
+const beam = (m, i, a, b) => {
+  const d = b.subtract(a), len = d.length(), q = new B.Quaternion();
+  B.Quaternion.FromUnitVectorsToRef(B.Axis.Y, d.scale(1 / len), q);
+  B.Matrix.Compose(new B.Vector3(1, len / m.unit, 1), q, a.add(b).scale(.5)).copyToArray(m.buf, i * 16);
+};
+[posts, caps, rails, railTops].forEach(m => { m.unit = 1; });
+caps.unit = .07;
+const fencePoint = (side, z, up) => {
+  const x = pathX(z) + side * FENCE_X;
+  return new B.Vector3(x, groundY(x, z) + up, z);
+};
+const fenceSegs = [];
+const placeSeg = (seg, z) => {
+  seg.z = z;
+  const n = z + FENCE_GAP, i = seg.i;
+  beam(posts, i, fencePoint(seg.side, z, -.3), fencePoint(seg.side, z, 1.1));
+  beam(caps, i, fencePoint(seg.side, z, 1.1), fencePoint(seg.side, z, 1.17));
+  beam(rails, i * 2, fencePoint(seg.side, z, 1.02), fencePoint(seg.side, n, 1.02));
+  beam(rails, i * 2 + 1, fencePoint(seg.side, z, .55), fencePoint(seg.side, n, .55));
+  beam(railTops, i, fencePoint(seg.side, z, 1.05), fencePoint(seg.side, n, 1.05));
+};
+for (let s = 0; s < 2; s++) for (let k = 0; k < FENCE_N; k++) {
+  const seg = { i: fenceSegs.length, side: s ? 1 : -1, z: 0 };
+  fenceSegs.push(seg);
+  placeSeg(seg, 14 + k * FENCE_GAP);
+}
+const fenceBufs = [posts, caps, rails, railTops];
+fenceBufs.forEach(m => m.thinInstanceBufferUpdated('matrix'));
+
+const updateWorld = camZ => {
+  for (const m of chunks) if (m.zStart + CH < camZ - 12) buildChunk(m, m.zStart + CH * CHUNKS);
+  fields.forEach(f => f(camZ));
+  let dirty = false;
+  for (const seg of fenceSegs) if (seg.z < camZ - 8) { placeSeg(seg, seg.z + FENCE_GAP * FENCE_N); dirty = true; }
+  if (dirty) fenceBufs.forEach(m => m.thinInstanceBufferUpdated('matrix'));
+};
+
+// 먼 하늘, 달, 설산 능선을 한 장의 배경으로 그린다.
+{
+  const W = 2048, H = 1024, tex = new B.DynamicTexture('sky', { width: W, height: H }, scene, true);
+  const c = tex.getContext();
+  const g = c.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#030712'); g.addColorStop(.55, '#0b1730'); g.addColorStop(.72, '#1b2d50'); g.addColorStop(1, '#101c33');
+  c.fillStyle = g; c.fillRect(0, 0, W, H);
+  for (let i = 0; i < 1500; i++) {
+    c.globalAlpha = rnd(.08, .8) ** 2;
+    c.fillStyle = rnd() < .2 ? '#cfe0ff' : '#fff';
+    const r = rnd(.35, 1.15);
+    c.beginPath(); c.arc(rnd(0, W), rnd(0, H * .6), r, 0, 7); c.fill();
+  }
+  c.globalAlpha = 1;
+  const mx = 1290, my = 300, halo = c.createRadialGradient(mx, my, 8, mx, my, 280);
+  halo.addColorStop(0, 'rgba(190,212,255,.6)'); halo.addColorStop(.12, 'rgba(130,165,235,.2)'); halo.addColorStop(1, 'rgba(90,130,210,0)');
+  c.fillStyle = halo; c.fillRect(0, 0, W, H);
+  c.fillStyle = '#eef3ff'; c.beginPath(); c.arc(mx, my, 24, 0, 7); c.fill();
+  // 능선 2겹: 위는 달빛을 받은 눈, 아래는 그늘
+  for (const [base, amp, top, bot, f] of [[520, 120, '#9fb4dc', '#1a2846', .0042], [590, 80, '#566d9c', '#101a30', .007]]) {
+    const pts = [];
+    for (let x = 0; x <= W; x += 4) {
+      const ridge = 1 - Math.abs(fbm(x * f, base * .01) * 2 - 1);
+      pts.push([x, base - ridge * ridge * amp * 2 + fbm(x * .05, 9) * 24]);
+    }
+    const gr = c.createLinearGradient(0, base - amp * 2, 0, H);
+    gr.addColorStop(0, top); gr.addColorStop(.5, bot); gr.addColorStop(1, bot);
+    c.fillStyle = gr;
+    c.beginPath(); c.moveTo(0, H);
+    pts.forEach(p => c.lineTo(p[0], p[1]));
+    c.lineTo(W, H); c.fill();
+  }
+  tex.update(false);
+  const m = new B.StandardMaterial('skyM', scene);
+  m.emissiveTexture = tex; m.disableLighting = true; m.fogEnabled = false; m.backFaceCulling = false;
+  m.emissiveTexture.level = 1;
+  const sky = skyMesh = B.MeshBuilder.CreatePlane('sky', { width: 1500, height: 750 }, scene);
+  sky.position.set(VILLAGE_X * 3.3, 90, 560);
+  sky.material = m;
+  sky.applyFog = false;
+}
+
+// 멀리 보이는 민가 불빛
+{
+  const size = 256, tex = new B.DynamicTexture('glow', size, scene, true), c = tex.getContext();
+  const g = c.createRadialGradient(128, 128, 0, 128, 128, 128);
+  g.addColorStop(0, 'rgba(255,224,176,.95)'); g.addColorStop(.1, 'rgba(255,176,104,.3)'); g.addColorStop(.45, 'rgba(255,140,70,.05)'); g.addColorStop(1, 'rgba(255,120,40,0)');
+  c.fillStyle = g; c.fillRect(0, 0, size, size); tex.update(false); tex.hasAlpha = true;
+  const m = new B.StandardMaterial('glowM', scene);
+  m.emissiveTexture = tex; m.opacityTexture = tex; m.disableLighting = true; m.fogEnabled = false;
+  m.alphaMode = B.Engine.ALPHA_ADD; m.backFaceCulling = false;
+  [[0, 0, 12], [-5, .4, 5], [5.5, -.3, 6]].forEach(([dx, dy, s], i) => {
+    const z = VILLAGE_Z, x = VILLAGE_X + dx, gl = B.MeshBuilder.CreatePlane('g' + i, { size: s }, scene);
+    gl.position.set(x, camY + 4.5 + dy, z);
+    gl.billboardMode = B.Mesh.BILLBOARDMODE_ALL;
+    gl.material = m;
+    glows.push({ mesh: gl, dx, dy });
+  });
+}
+
+// 내리는 눈
+{
+  const size = 64, tex = new B.DynamicTexture('flake', size, scene, true), c = tex.getContext();
+  const g = c.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  c.fillStyle = g; c.fillRect(0, 0, size, size); tex.update(false); tex.hasAlpha = true;
+  const ps = new B.ParticleSystem('snowfall', 3500, scene);
+  ps.particleTexture = tex;
+  ps.emitter = camera.position.add(new B.Vector3(0, 9, 12));
+  ps.minEmitBox = new B.Vector3(-22, 0, -14);
+  ps.maxEmitBox = new B.Vector3(22, 2, 26);
+  ps.color1 = new B.Color4(.8, .87, 1, .75); ps.color2 = new B.Color4(.65, .75, 1, .4); ps.colorDead = new B.Color4(.6, .7, 1, 0);
+  ps.minSize = .018; ps.maxSize = .06; ps.minLifeTime = 5; ps.maxLifeTime = 10; ps.emitRate = 450;
+  ps.gravity = new B.Vector3(.12, -.75, -.05);
+  ps.direction1 = new B.Vector3(-.15, -.4, -.15); ps.direction2 = new B.Vector3(.2, -.6, .15);
+  ps.blendMode = B.ParticleSystem.BLENDMODE_ADD;
+  ps.preWarmCycles = 600; ps.preWarmStepOffset = 4;
+  ps.start();
+  snowPs = ps;
+}
+
+// 후처리
+const pipe = new B.DefaultRenderingPipeline('pipe', true, scene, [camera]);
+pipe.samples = 2;
+pipe.fxaaEnabled = true;
+pipe.bloomEnabled = true; pipe.bloomThreshold = .72; pipe.bloomWeight = .45; pipe.bloomKernel = 72; pipe.bloomScale = .5;
+pipe.grainEnabled = true; pipe.grain.intensity = 6; pipe.grain.animated = true;
+const ip = pipe.imageProcessing;
+ip.toneMappingEnabled = true; ip.toneMappingType = B.ImageProcessingConfiguration.TONEMAPPING_ACES;
+ip.exposure = 1.3; ip.contrast = 1.25;
+ip.vignetteEnabled = true; ip.vignetteWeight = 1.6; ip.vignetteColor = new B.Color4(0, 0, 0, 0); ip.vignetteCameraFov = 1;
+
+const ssao = new B.SSAO2RenderingPipeline('ssao', scene, { ssaoRatio: .5, blurRatio: 1 }, [camera]);
+ssao.radius = 1.4; ssao.totalStrength = 1.15; ssao.samples = 8; ssao.maxZ = 120; ssao.minZAspect = .3;
+
+// 게임 상태
+const $ = id => document.getElementById(id);
+const S = { mode: 'intro', z: 0, u: 0, v: 0, t: 0, hp: 100, coins: 0 };
+const keys = {};
+addEventListener('keydown', e => { keys[e.code] = true; });
+addEventListener('keyup', e => { keys[e.code] = false; });
+
+const cur = { pos: camera.position.clone(), look: camera.getTarget().clone(), roll: 0 };
+
+const say = text => {
+  const c = $('cap');
+  if (text) c.textContent = text;
+  c.classList.toggle('on', !!text);
+};
+
+const updateRun = dt => {
+  S.t += dt;
+  S.z = Math.min(TOTAL, S.z + SPEED * dt);
+  const dir = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0);
+  S.v += (dir * 7 - S.v) * Math.min(1, dt * 7);
+  S.u = clamp(S.u + S.v * dt, -HALF_WIDTH, HALF_WIDTH);
+  if (Math.abs(S.u) === HALF_WIDTH) S.v = 0;
+  const x = pathX(S.z) + S.u;
+  cur.pos.set(x, groundY(x, S.z) + 1.25 + Math.sin(S.t * 5) * .012, S.z);
+  const ahead = S.z + 16, ax = pathX(ahead) + S.u * .75;
+  cur.look.set(ax, groundY(ax, ahead) + 1.45, ahead);
+  cur.roll = -S.v * .012;
+  if (S.z >= TOTAL) { S.mode = 'end'; say('민가에 도착했다.'); }
+};
+
+const updateHud = () => {
+  const left = TOTAL - S.z, pct = S.z / TOTAL * 100, sec = Math.floor(S.t);
+  $('vDist').textContent = (left / 1000).toFixed(2);
+  $('tDone').style.width = pct + '%';
+  $('tMe').style.left = pct + '%';
+  $('vTime').textContent = String(Math.floor(sec / 60)).padStart(2, '0') + ':' + String(sec % 60).padStart(2, '0');
+  $('vHp').textContent = S.hp;
+  $('barHp').style.width = S.hp + '%';
+  $('vCoin').textContent = S.coins;
+  $('vScore').textContent = (Math.floor(S.t * 10) + S.coins * 50).toLocaleString();
+};
+
+const startRun = () => {
+  S.mode = 'run'; S.z = 0; S.u = 0; S.v = 0; S.t = 0;
+  $('hud').classList.add('on');
+};
+
+startRun();
+
+const fps = $('fps');
+let frames = 0;
+window.__game = S;
+engine.runRenderLoop(() => {
+  const dt = Math.min(.05, engine.getDeltaTime() / 1000);
+  if (S.mode === 'run') updateRun(dt);
+  camera.position.copyFrom(cur.pos);
+  camera.setTarget(cur.look);
+  camera.rotation.z = cur.roll;
+  lantern.position.copyFrom(cur.pos).addInPlaceFromFloats(.3, -.2, 0);
+  lantern.direction.copyFrom(cur.look.subtract(cur.pos).normalize()).addInPlaceFromFloats(0, -.2, 0);
+  updateWorld(S.z);
+  snowPs.emitter.set(cur.pos.x, cur.pos.y + 9, cur.pos.z + 12);
+  skyMesh.position.set(cur.pos.x + 90, cur.pos.y + 95, cur.pos.z + 560);
+  for (const g of glows) g.mesh.position.set(cur.pos.x + 34 + g.dx, cur.pos.y + 4.5 + g.dy, cur.pos.z + VILLAGE_Z);
+  updateHud();
+  scene.render();
+  if (++frames % 20 === 0) fps.textContent = `${engine.getFps().toFixed(0)} FPS | ${scene.getTotalVertices().toLocaleString()} verts`;
+});
+addEventListener('resize', () => engine.resize());
+</script>
+</body>
+</html>

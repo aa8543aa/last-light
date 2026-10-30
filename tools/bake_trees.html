@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8"><title>나무 카드 제작</title></head>
+<body style="margin:0;background:#223">
+<canvas id="c" width="512" height="512"></canvas>
+<script src="https://cdn.jsdelivr.net/npm/babylonjs@7.54.3/babylon.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/babylonjs-loaders@7.54.3/babylonjs.loaders.min.js"></script>
+<script>
+// Poly Haven 전나무 모델에 눈과 달빛을 입혀 투명 배경 이미지로 찍는다.
+const B = BABYLON;
+const engine = new B.Engine(document.getElementById('c'), false, { preserveDrawingBuffer: true });
+const scene = new B.Scene(engine);
+scene.clearColor = new B.Color4(0, 0, 0, 0);
+new B.HemisphericLight('h', new B.Vector3(0, 1, 0), scene);
+
+B.Effect.ShadersStore.bakeVertexShader = `
+precision highp float;
+attribute vec3 position; attribute vec3 normal; attribute vec2 uv;
+uniform mat4 world; uniform mat4 viewProjection;
+varying vec3 vN; varying vec3 vP; varying vec2 vUV;
+void main() {
+  vec4 p = world * vec4(position, 1.0);
+  vP = p.xyz; vN = normalize(mat3(world) * normal); vUV = uv;
+  gl_Position = viewProjection * p;
+}`;
+B.Effect.ShadersStore.bakeFragmentShader = `
+precision highp float;
+varying vec3 vN; varying vec3 vP; varying vec2 vUV;
+uniform sampler2D diffuse;
+uniform vec3 axis; uniform vec3 moon; uniform float height; uniform float reach; uniform float isTwig;
+float hash(vec3 p) { p = fract(p * .3183099 + .1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+float noise(vec3 x) {
+  vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mix(hash(i), hash(i + vec3(1, 0, 0)), f.x), mix(hash(i + vec3(0, 1, 0)), hash(i + vec3(1, 1, 0)), f.x), f.y),
+             mix(mix(hash(i + vec3(0, 0, 1)), hash(i + vec3(1, 0, 1)), f.x), mix(hash(i + vec3(0, 1, 1)), hash(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+}
+void main() {
+  vec4 tex = texture2D(diffuse, vUV);
+  vec3 n = normalize(vN);
+  if (!gl_FrontFacing) n = -n;
+  float up = abs(n.y) * (n.y > 0.0 ? 1.0 : .25);
+  float r = length(vP.xz - axis.xz);
+  float h = clamp((vP.y - axis.y) / height, 0.0, 1.0);
+  float cone = max(.05, (1.0 - h) * reach);
+  float outer = clamp(r / cone, 0.0, 1.0);
+  // 눈 쌓임: 위를 향하고 바깥쪽일수록 많이 쌓인다.
+  float clump = noise(vP * 2.2) * .6 + noise(vP * 8.0) * .4;
+  float depth = smoothstep(.34, .02, up + (clump - .5) * .6);
+  float snow = (1.0 - depth) * smoothstep(.0, .36, outer + clump * .4);
+  snow = clamp(snow * (isTwig > .5 ? 1.5 : .9), 0.0, 1.0);
+  // 줄기와 가지 아래는 어둡게, 바깥은 달빛을 받는다.
+  float ao = mix(.34, 1.0, smoothstep(.05, .7, outer)) * mix(.82, 1.0, h);
+  float light = clamp(dot(n, -moon), 0.0, 1.0);
+  float wrap = clamp(dot(n, -moon) * .5 + .5, 0.0, 1.0);
+  vec3 moonCol = vec3(.72, .84, 1.12), sky = vec3(.24, .33, .54);
+  vec3 bare = pow(tex.rgb, vec3(1.1)) * vec3(.55, .62, .72);
+  vec3 snowCol = mix(vec3(.82, .88, 1.0), vec3(.98), clump);
+  vec3 albedo = mix(bare, snowCol, snow);
+  vec3 col = albedo * (moonCol * light * 1.5 + sky * (.8 + wrap * .9)) * ao;
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
+const MOON = new B.Vector3(-.72, -.62, .32).normalize();
+const send = async (name, pixels) => {
+  const r = await fetch('/save?name=' + name, { method: 'POST', body: pixels });
+  if (!r.ok) throw new Error('save failed ' + name);
+};
+const waitReady = list => new Promise(res => {
+  const tick = () => { if (list.every(m => m.isReady(true))) res(); else setTimeout(tick, 100); };
+  tick();
+});
+
+window.bake = async (model, size) => {
+  const log = [];
+  const loaded = await B.SceneLoader.ImportMeshAsync('', `/models/${model}/`, `${model}_1k.gltf`, scene);
+  const meshes = loaded.meshes.filter(m => m.getTotalVertices() > 0);
+  const groups = {};
+  for (const m of meshes) {
+    const key = (m.parent && m.parent.name !== '__root__' ? m.parent.name : m.name).replace(/_primitive\d+$/, '');
+    (groups[key] = groups[key] || []).push(m);
+  }
+  const mats = new Map();
+  const shaderFor = m => {
+    const src = m.material;
+    if (mats.has(src)) return mats.get(src);
+    const s = new B.ShaderMaterial('bake', scene, { vertex: 'bake', fragment: 'bake' }, {
+      attributes: ['position', 'normal', 'uv'],
+      uniforms: ['world', 'viewProjection', 'axis', 'moon', 'height', 'reach', 'isTwig'],
+      samplers: ['diffuse'],
+    });
+    s.setTexture('diffuse', src.albedoTexture);
+    s.setVector3('moon', MOON);
+    s.setFloat('isTwig', /twig/.test(src.name) ? 1 : 0);
+    s.backFaceCulling = false;
+    mats.set(src, s);
+    return s;
+  };
+  meshes.forEach(m => { m.material = shaderFor(m); m.setEnabled(false); });
+  const names = Object.keys(groups).sort();
+  for (let g = 0; g < names.length; g++) {
+    const list = groups[names[g]];
+    list.forEach(m => m.setEnabled(true));
+    let lo = new B.Vector3(1e9, 1e9, 1e9), hi = lo.scale(-1);
+    list.forEach(m => {
+      m.computeWorldMatrix(true); m.refreshBoundingInfo();
+      const b = m.getBoundingInfo().boundingBox;
+      lo = B.Vector3.Minimize(lo, b.minimumWorld); hi = B.Vector3.Maximize(hi, b.maximumWorld);
+    });
+    const c = lo.add(hi).scale(.5), ext = hi.subtract(lo);
+    const reach = Math.max(ext.x, ext.z) * .5;
+    mats.forEach(s => {
+      s.setVector3('axis', new B.Vector3(c.x, lo.y, c.z));
+      s.setFloat('height', ext.y);
+      s.setFloat('reach', reach);
+    });
+    const half = Math.max(ext.y, reach * 2) / 2 + .1;
+    for (let v = 0; v < 2; v++) {
+      const a = v * Math.PI / 2 + .4;
+      const cam = new B.FreeCamera('cam', new B.Vector3(c.x - Math.sin(a) * 60, c.y, c.z - Math.cos(a) * 60), scene);
+      cam.setTarget(c);
+      cam.mode = B.Camera.ORTHOGRAPHIC_CAMERA;
+      cam.orthoLeft = -half; cam.orthoRight = half; cam.orthoTop = half; cam.orthoBottom = -half;
+      cam.minZ = 1; cam.maxZ = 130;
+      const rtt = new B.RenderTargetTexture('out', size, scene, false, true, B.Constants.TEXTURETYPE_UNSIGNED_BYTE);
+      rtt.samples = 8;
+      rtt.activeCamera = cam; rtt.renderList = list; rtt.clearColor = new B.Color4(0, 0, 0, 0);
+      await waitReady(list);
+      scene.activeCamera = cam;
+      scene.incrementRenderId();
+      scene.updateTransformMatrix(true);
+      rtt.render(false);
+      const px = await rtt.readPixels();
+      await send(`${model}_${g}_${v}_${size}.raw`, px);
+      log.push({ group: names[g], view: v, height: ext.y, width: reach * 2, half });
+      rtt.dispose(); cam.dispose();
+    }
+    list.forEach(m => m.setEnabled(false));
+  }
+  loaded.meshes.forEach(m => m.dispose());
+  await fetch('/save?name=' + model + '.json', { method: 'POST', body: JSON.stringify(log) });
+  return log;
+};
+window.ready = true;
+</script>
+</body>
+</html>

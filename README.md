@@ -10,7 +10,7 @@
 
 - 실행 방법: [GitHub Pages에서 플레이](https://aa8543aa.github.io/last-light/) 또는 `index.html`을 브라우저로 열기 (인터넷 연결 필요)
 - 조작법: `A`/`D` 또는 `←`/`→`로 좌우 이동, `Space` 점프, 마우스를 움직여 주변 보기 (커서를 위로 올리면 하늘)
-- 에셋 출처: 하늘은 [Milky Way at Chajnantor](https://commons.wikimedia.org/wiki/File:Milky_Way_at_Chajnantor_(uhd_9428_panorama_eq).jpg) (Y. Beletsky (LCO)/ESO, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0)), 산은 [Kanchenjungha-Panorama](https://commons.wikimedia.org/wiki/File:Kanchenjungha-Panorama.jpg) (Sujay25, [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0))를 사용함. 하늘은 위쪽만 잘라 별을 지웠고, 산은 하늘을 지우고 밤 색으로 보정함. 눈 지면은 [Poly Haven Snow 02](https://polyhaven.com/a/snow_02) (Rob Tuytel, CC0). 나무와 바위는 코드로 생성함
+- 에셋 출처: 하늘은 [Milky Way at Chajnantor](https://commons.wikimedia.org/wiki/File:Milky_Way_at_Chajnantor_(uhd_9428_panorama_eq).jpg) (Y. Beletsky (LCO)/ESO, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0)), 산은 [Kanchenjungha-Panorama](https://commons.wikimedia.org/wiki/File:Kanchenjungha-Panorama.jpg) (Sujay25, [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0))를 사용함. 하늘은 위쪽만 잘라 별을 지웠고, 산은 하늘을 지우고 밤 색으로 보정함. 눈 지면은 [Poly Haven Snow 02](https://polyhaven.com/a/snow_02) (Rob Tuytel, CC0). 나무는 [Poly Haven Fir Tree 01](https://polyhaven.com/a/fir_tree_01), [Fir Sapling Medium](https://polyhaven.com/a/fir_sapling_medium) (Rob Tuytel, Rico Cilliers, CC0)에 눈과 달빛을 입혀 이미지로 제작함. 바위는 코드로 생성함
 
 ## 2. PRD
 
@@ -102,6 +102,7 @@
 - [x] 급경사 위 추락 지점과 자동 활강 인트로로 변경
 - [x] 사용한 스킬과 활용 방식을 README에 기록
 - [x] 민가가 약 3km 밖으로 보이도록 변경
+- [x] 숲을 스캔 모델로 만든 이미지 카드로 교체
 - [ ] 사운드와 크리스마스 연출 추가
 - [x] 1차 최적화 (전후 수치는 변경 내역 참고)
 - [ ] 게임 완성 후 최종 성능 측정
@@ -163,6 +164,7 @@
 | 2026-10-30 | 수정 | 27m/s, 8.1km, 약 5분, Shift 부스트 | 43m/s 상시, 3km, 약 1분 10초, 부스트 키 삭제, 스테미나는 점프에만 사용 | 플레이 테스트에서 코스가 너무 길고 속도가 답답함 |
 | 2026-10-30 | 수정 | 게임 시작 위치에서 깨어남 | 약 50m 위 급경사의 턱에서 민가를 내려다보고, 자동으로 활강한 뒤 원래 위치에서 조작 시작 | 내려다보는 발견 연출이 더 자연스러움 |
 | 2026-10-30 | 수정 | 약 380m 앞 언덕의 민가 | 약 3km 거리로 보이는 먼 능선 위의 민가, 첫 낭떠러지는 620m 지점으로 이동 | 플레이 테스트에서 민가가 너무 가까움. 코스 길이와 맞춤 |
+| 2026-10-30 | 수정 | 코드로 만든 입체 나무와 덤불, 가문비나무 | CC0 스캔 전나무로 미리 만든 이미지 카드, 입체 나무 제거 | 정점을 줄이면서 사실감을 높이기 위함 |
 | 2026-10-30 | 추가 | 스키를 묶으면 바로 조작 시작 | 미끄러지다 뒤돌아보면 늑대 무리가 쫓아오는 장면 후 조작 시작 | 도입부의 긴장감을 높이기 위함 |
 | 2026-10-30 | 추가 | 없음 | 체력 30을 회복하는 키트 | 장애물과 동물로 줄어든 체력을 회복하기 위함 |
 | 2026-10-30 | 수정 | 하늘과 산 이미지 3840px | 원본에서 하늘은 시점 범위 8192px, 산은 7680px로 다시 제작 | 플레이 테스트에서 해상도가 낮게 보임. 파일 크기는 커짐 |

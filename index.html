@@ -9,10 +9,8 @@
   canvas { width: 100%; height: 100%; display: block; }
   #hud { opacity: 0; transition: opacity 1.2s; }
   #hud.on { opacity: 1; }
-  #cap { position: fixed; left: 50%; bottom: 17%; transform: translateX(-50%); width: min(92%, 680px); text-align: center; color: #eef2fa;
-    font: 300 clamp(17px, 2.2vw, 23px)/1.6 "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
-    text-shadow: 0 1px 8px #000; opacity: 0; transition: opacity .8s; pointer-events: none; }
-  #cap.on { opacity: 1; }
+  #flash { position: fixed; inset: 0; background: #ffd9a6; opacity: 0; pointer-events: none; }
+  #fade { position: fixed; inset: 0; background: #000; opacity: 1; transition: opacity 1.4s; pointer-events: none; }
   #fps { position: fixed; bottom: 4px; left: 50%; transform: translateX(-50%); color: #fff; font: 11px monospace; opacity: .35; }
   #hud {
     --ink: #f2f5fb; --dim: rgba(226,233,247,.62); --line: rgba(226,233,247,.26);
@@ -81,7 +79,8 @@
     <span><kbd>A</kbd><kbd>D</kbd>또는 <kbd>←</kbd><kbd>→</kbd>좌우 이동</span>
   </section>
 </div>
-<div id="cap"></div>
+<div id="flash"></div>
+<div id="fade"></div>
 <div id="fps"></div>
 <script src="https://cdn.jsdelivr.net/npm/babylonjs@7.54.3/babylon.js"></script>
 <script>
@@ -106,8 +105,10 @@ const fbm = (x, y) => noise(x, y) * .5 + noise(x * 2.1, y * 2.1) * .3 + noise(x 
 
 const pathX = z => 7 * Math.sin(z * .028) + 2 * Math.sin(z * .07);
 const groundY = (x, z) => {
-  const d = Math.abs(x - pathX(z));
-  return smooth(4, 10.5, d) * (1.1 + d * .05) + (fbm(x * .12, z * .12) - .5) * (.25 + smooth(3, 12, d) * 2.2) - z * .035;
+  const dx = x - pathX(z), d = Math.abs(dx);
+  const hillside = Math.max(0, -dx - 5) * .42 - Math.max(0, dx - 5) * .3;
+  return smooth(4, 10.5, d) * (1.1 + d * .05) + (fbm(x * .12, z * .12) - .5) * (.25 + smooth(3, 12, d) * 2.2)
+    + hillside - z * .09 + Math.sin(z * .013) * 7 - 7 * Math.sin(0);
 };
 
 const VILLAGE_Z = 170, VILLAGE_X = 34;
@@ -468,15 +469,9 @@ addEventListener('keyup', e => { keys[e.code] = false; });
 
 const cur = { pos: camera.position.clone(), look: camera.getTarget().clone(), roll: 0 };
 
-const say = text => {
-  const c = $('cap');
-  if (text) c.textContent = text;
-  c.classList.toggle('on', !!text);
-};
-
 const updateRun = dt => {
   S.t += dt;
-  S.z = Math.min(TOTAL, S.z + SPEED * dt);
+  S.z = Math.min(TOTAL, S.z + SPEED * Math.min(1, .25 + S.t / 2.5) * dt);
   const dir = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0);
   S.v += (dir * 7 - S.v) * Math.min(1, dt * 7);
   S.u = clamp(S.u + S.v * dt, -HALF_WIDTH, HALF_WIDTH);
@@ -484,9 +479,9 @@ const updateRun = dt => {
   const x = pathX(S.z) + S.u;
   cur.pos.set(x, groundY(x, S.z) + 1.25 + Math.sin(S.t * 5) * .012, S.z);
   const ahead = S.z + 16, ax = pathX(ahead) + S.u * .75;
-  cur.look.set(ax, groundY(ax, ahead) + 1.45, ahead);
+  cur.look.set(ax, groundY(ax, ahead) + 1.1, ahead);
   cur.roll = -S.v * .012;
-  if (S.z >= TOTAL) { S.mode = 'end'; say('민가에 도착했다.'); }
+  if (S.z >= TOTAL) { S.mode = 'end'; }
 };
 
 const updateHud = () => {
@@ -506,23 +501,346 @@ const startRun = () => {
   $('hud').classList.add('on');
 };
 
-startRun();
+// 1인칭 몸: 카메라에 붙여 장면마다 팔, 다리, 스키의 자세를 바꾼다.
+const coat = lit('coat', .1, .13, .2, .75), glove = lit('glove', .035, .03, .03, .6);
+coat.emissiveColor = new B.Color3(.012, .015, .024);
+glove.emissiveColor = new B.Color3(.012, .011, .011);
+const skiMat = lit('ski', .3, .24, .17, .7);
+const limb = (name, radius, height, mat) => {
+  const m = B.MeshBuilder.CreateCapsule(name, { radius, height, tessellation: 16, subdivisions: 2 }, scene);
+  m.material = mat; m.parent = camera; m.receiveShadows = false;
+  return m;
+};
+const makeArm = side => {
+  const arm = limb('arm', .052, .5, coat), hand = limb('hand', .05, .15, glove);
+  hand.parent = arm; hand.position.y = .29;
+  return { mesh: arm, side };
+};
+const makeLeg = side => {
+  const leg = limb('leg', .085, .9, coat), boot = limb('boot', .07, .32, glove);
+  boot.parent = leg; boot.position.set(0, .48, -.08); boot.rotation.x = 1.2;
+  return { mesh: leg, boot, side };
+};
+const makeSki = side => {
+  const ski = B.MeshBuilder.CreateBox('ski', { width: .1, height: .022, depth: 1.8 }, scene);
+  const tip = B.MeshBuilder.CreateBox('tip', { width: .1, height: .022, depth: .24 }, scene);
+  ski.material = tip.material = skiMat;
+  tip.parent = ski; tip.position.set(0, .05, 1); tip.rotation.x = -.5;
+  ski.parent = camera; ski.isVisible = tip.isVisible = false;
+  return { mesh: ski, tip, side };
+};
+const arms = [makeArm(-1), makeArm(1)], legs = [makeLeg(-1), makeLeg(1)], skis = [makeSki(-1), makeSki(1)];
+// 자세: 기준 위치와 회전을 좌우 대칭으로 지정한다.
+const bodyPose = { arm: null, leg: null, rate: 8 };
+const POSES = {
+  seatArm: { p: [.25, -.25, .46], r: [1.3, 0, -.08] },
+  seatLeg: { p: [.15, -.42, .72], r: [1.15, 0, 0] },
+  fallArm: { p: [.4, -.12, .62], r: [.7, 0, -.9] },
+  fallLeg: { p: [.2, -.46, .85], r: [1.1, 0, -.15] },
+  skiArm: { p: [.38, -.3, .58], r: [1.25, 0, -.2] },
+  skiLeg: { p: [.16, -1.1, .15], r: [.25, 0, 0] },
+  hideArm: { p: [.4, -1.3, .1], r: [.3, 0, 0] },
+  hideLeg: { p: [.16, -1.6, .1], r: [.2, 0, 0] },
+};
+bodyPose.arm = POSES.seatArm; bodyPose.leg = POSES.seatLeg;
+const setPart = (part, pose, k, wob) => {
+  const s = part.side, m = part.mesh;
+  m.position.x += (pose.p[0] * s - m.position.x) * k;
+  m.position.y += (pose.p[1] + wob * .05 - m.position.y) * k;
+  m.position.z += (pose.p[2] - m.position.z) * k;
+  m.rotation.x += (pose.r[0] + wob * .25 - m.rotation.x) * k;
+  m.rotation.y += (pose.r[1] * s - m.rotation.y) * k;
+  m.rotation.z += (pose.r[2] * s + wob * .2 - m.rotation.z) * k;
+};
+const updateBody = (dt, time) => {
+  const k = Math.min(1, dt * bodyPose.rate), flail = bodyPose.arm === POSES.fallArm ? 1 : 0;
+  arms.forEach((a, i) => setPart(a, bodyPose.arm, k, flail ? Math.sin(time * 9 + i * 2) * 1.6 : Math.sin(time * 2 + i) * .08));
+  legs.forEach((l, i) => setPart(l, bodyPose.leg, k, flail ? Math.sin(time * 7 + i * 3) * 1.2 : 0));
+  skis.forEach(sk => {
+    sk.mesh.position.set(sk.side * .2 + S.v * .006, -1.16, 1.6);
+    sk.mesh.rotation.y = S.v * .022;
+    sk.mesh.rotation.z = -S.v * .012;
+  });
+};
+const wearSkis = on => skis.forEach(sk => { sk.mesh.isVisible = on; sk.tip.isVisible = on; });
+
+// 기내: 지면과 멀리 떨어진 높은 곳에 만든다.
+const CABIN_Y = 1500;
+const cabin = new B.TransformNode('cabin', scene);
+const flat = (name, r, g, b) => {
+  const m = new B.StandardMaterial(name, scene);
+  m.disableLighting = true; m.emissiveColor = new B.Color3(r, g, b); m.fogEnabled = false;
+  return m;
+};
+const wallMat = flat('wall', .62, .58, .52), seatMat = flat('seat', .3, .34, .46), stripMat = flat('strip', .8, .68, .5), winMat = flat('win', .03, .06, .14);
+const cabinBox = (w, h, d, x, y, z, mat) => {
+  const m = B.MeshBuilder.CreateBox('c', { width: w, height: h, depth: d }, scene);
+  m.position.set(x, CABIN_Y + y, z); m.material = mat; m.parent = cabin;
+  return m;
+};
+cabinBox(.08, 2.4, 22, -1.9, 0, 8, wallMat);
+cabinBox(.08, 2.4, 22, 1.9, 0, 8, wallMat);
+cabinBox(3.9, .08, 22, 0, -1.2, 8, seatMat);
+cabinBox(3.9, .08, 22, 0, 1.2, 8, wallMat);
+cabinBox(3.9, 2.4, .08, 0, 0, 19, wallMat);
+cabinBox(.16, .03, 21, -.7, 1.15, 8, stripMat);
+cabinBox(.16, .03, 21, .7, 1.15, 8, stripMat);
+for (let z = -1; z < 18; z += 1.05) {
+  for (const x of [-1.25, -.65, .65, 1.25]) {
+    cabinBox(.52, .55, .14, x, -.42, z, seatMat);
+    cabinBox(.52, .14, .5, x, -.72, z - .25, seatMat);
+    cabinBox(.4, .2, .1, x, -.04, z, seatMat);
+  }
+  cabinBox(.03, .36, .26, -1.86, .15, z, winMat);
+  cabinBox(.03, .36, .26, 1.86, .15, z, winMat);
+}
+
+// 비행기 파편: 추락하는 동안 카메라 주변을 함께 떨어진다.
+const metal = lit('metal', .3, .31, .34, .5);
+metal.metallic = .7;
+const debris = [];
+for (let i = 0; i < 12; i++) {
+  const m = B.MeshBuilder.CreateBox('debris', { width: rnd(.3, 1.6), height: rnd(.03, .3), depth: rnd(.3, 2) }, scene);
+  m.material = metal; m.setEnabled(false);
+  const dir = new B.Vector3(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)).normalize();
+  debris.push({ m, o: dir.scale(rnd(7, 24)), spin: new B.Vector3(rnd(-3, 3), rnd(-3, 3), rnd(-3, 3)) });
+}
+
+const fireTex = (() => {
+  const t = new B.DynamicTexture('fire', 64, scene, true), c = t.getContext(), g = c.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, 'rgba(255,240,200,1)'); g.addColorStop(.35, 'rgba(255,140,50,.7)'); g.addColorStop(1, 'rgba(120,30,0,0)');
+  c.fillStyle = g; c.fillRect(0, 0, 64, 64); t.update(false); t.hasAlpha = true;
+  return t;
+})();
+const burst = (pos, count, c1, c2, size, power, tex) => {
+  const ps = new B.ParticleSystem('burst', count, scene);
+  ps.particleTexture = tex; ps.emitter = pos.clone();
+  ps.minEmitBox = ps.maxEmitBox = B.Vector3.Zero();
+  ps.color1 = c1; ps.color2 = c2; ps.colorDead = new B.Color4(c2.r, c2.g, c2.b, 0);
+  ps.minSize = size * .4; ps.maxSize = size; ps.minLifeTime = .5; ps.maxLifeTime = 1.8;
+  ps.direction1 = new B.Vector3(-1, -1, -1); ps.direction2 = new B.Vector3(1, 1, 1);
+  ps.minEmitPower = power * .3; ps.maxEmitPower = power;
+  ps.blendMode = B.ParticleSystem.BLENDMODE_ADD;
+  ps.manualEmitCount = count; ps.disposeOnStop = true; ps.targetStopDuration = 3;
+  ps.start();
+  return ps;
+};
+
+// 인트로: 입력을 받지 않는 고정 애니메이션이다.
+let anim = null;
+const play = (sec, fn) => new Promise(res => { anim = { t: 0, sec, fn, res }; });
+const hold = sec => play(sec, () => {});
+const pose = { pos: cur.pos.clone(), look: cur.look.clone(), roll: 0, rate: 1.3, on: false, shake: 0 };
+const updateIntro = dt => {
+  if (anim) {
+    anim.t += dt;
+    const u = Math.min(1, anim.t / anim.sec);
+    anim.fn(u, dt);
+    if (u >= 1) { const a = anim; anim = null; a.res(); }
+  }
+  if (pose.on) {
+    const k = 1 - Math.exp(-dt * pose.rate);
+    B.Vector3.LerpToRef(cur.pos, pose.pos, k, cur.pos);
+    B.Vector3.LerpToRef(cur.look, pose.look, k, cur.look);
+    cur.roll += (pose.roll - cur.roll) * k;
+  }
+};
+
+const seatPos = new B.Vector3(.65, CABIN_Y + .15, 1.35);
+const landX = pathX(0), landY = groundY(landX, 0);
+
+// 승객, 무릎 위 선물, 산소마스크: 말 없이 상황을 보여 주는 소품이다.
+const hairMats = [flat('h0', .03, .025, .02), flat('h1', .1, .07, .04), flat('h2', .16, .15, .14)];
+const shirtMat = flat('shirt', .28, .25, .22), skinMat = flat('skin', .5, .36, .28);
+const cabinSphere = (d, x, y, z, mat, sy = 1) => {
+  const m = B.MeshBuilder.CreateSphere('p', { diameter: d, segments: 10 }, scene);
+  m.position.set(x, CABIN_Y + y, z); m.scaling.y = sy; m.material = mat; m.parent = cabin;
+  return m;
+};
+for (let z = 2.15; z < 18; z += 1.05) for (const x of [-1.25, -.65, .65, 1.25]) {
+  if (rnd() < .3) continue;
+  cabinSphere(.21, x + rnd(-.04, .04), rnd(.03, .11), z + .16, hairMats[Math.floor(rnd(0, 3))], 1.12);
+}
+// 창가에 기대 잠든 옆자리 승객
+cabinSphere(.42, 1.25, -.34, 1.34, shirtMat, 1.5);
+cabinSphere(.2, 1.42, .03, 1.38, skinMat, 1.12);
+cabinSphere(.21, 1.44, .07, 1.33, hairMats[1], 1.05);
+const masks = [];
+for (let z = 1.9; z < 9; z += 1.05) for (const x of [-.95, .95]) {
+  const m = cabinBox(.13, .09, .13, x, 1.12, z, flat('mask' + masks.length, .85, .68, .14));
+  const cord = cabinBox(.008, 1, .008, x, 1.12, z, stripMat);
+  cord.scaling.y = .01;
+  masks.push({ m, cord, drop: rnd(.45, .75), delay: rnd(0, .35) });
+}
+const gift = B.MeshBuilder.CreateBox('gift', { width: .24, height: .13, depth: .19 }, scene);
+gift.material = flat('giftM', .42, .03, .04);
+gift.parent = camera; gift.position.set(0, -.235, .5); gift.rotation.x = .25;
+const ribbon = B.MeshBuilder.CreateBox('ribbon', { width: .03, height: .135, depth: .195 }, scene);
+ribbon.material = flat('ribbonM', .85, .68, .25);
+ribbon.parent = gift;
+
+const introCabin = async () => {
+  legs.forEach(l => l.boot.setEnabled(false));
+  setAir(true);
+  lantern.setEnabled(false);
+  pose.on = true; pose.rate = 1.5;
+  cur.pos.copyFrom(seatPos);
+  pose.pos.copyFrom(seatPos);
+  cur.look.set(.6, CABIN_Y - 1.75, 3);
+  pose.look.copyFrom(cur.look);
+  $('fade').style.opacity = 0;
+  // 무릎 위 선물을 내려다보다가, 잠든 옆 사람과 창밖을 보고, 앞을 본다.
+  await hold(3.4);
+  pose.look.set(2.4, CABIN_Y + .1, 1.75);
+  await hold(3.2);
+  pose.look.set(.5, CABIN_Y - .5, 9);
+  await hold(2.2);
+  // 난기류: 불이 깜빡이고 산소마스크가 떨어진다.
+  wallMat.emissiveColor.set(.5, .12, .09);
+  stripMat.emissiveColor.set(1, .15, .1);
+  await play(3.4, u => {
+    pose.shake = .004 + u * u * .05;
+    const blink = Math.sin(u * 34) > -.2 ? 1 : .25;
+    wallMat.emissiveColor.set(.5 * blink, .12 * blink, .09 * blink);
+    masks.forEach(k => {
+      const v = smooth(k.delay, k.delay + .25, u) * k.drop;
+      k.m.position.y = CABIN_Y + 1.12 - v;
+      k.cord.scaling.y = Math.max(.01, v);
+      k.cord.position.y = CABIN_Y + 1.12 - v / 2;
+    });
+  });
+  pose.on = false; pose.shake = 0;
+  gift.setEnabled(false);
+  legs.forEach(l => l.boot.setEnabled(true));
+};
+
+// 좌석에 앉은 채로 기체가 내 주변에서 조각나 날아간다.
+const introBreak = async () => {
+  $('flash').style.opacity = .8;
+  const parts = cabin.getChildMeshes().filter(m => !(m.position.x > 0 && m.position.x < 1 && Math.abs(m.position.z - 1.1) < .4));
+  parts.forEach(m => {
+    const out = new B.Vector3(m.position.x, m.position.y - CABIN_Y, 0);
+    m.vel = out.scale(rnd(3, 9)).addInPlaceFromFloats(rnd(-2, 2), rnd(-2, 3), rnd(-34, -8) * (m.position.z > 2 ? 1 : .3));
+    m.spin = new B.Vector3(rnd(-3, 3), rnd(-3, 3), rnd(-3, 3));
+  });
+  burst(new B.Vector3(0, CABIN_Y, 7), 700, new B.Color4(1, .75, .35, 1), new B.Color4(1, .3, .05, .8), 3.5, 16, fireTex);
+  cur.look.set(.5, CABIN_Y + .4, 8);
+  bodyPose.arm = POSES.fallArm;
+  await play(2.1, (u, dt) => {
+    $('flash').style.opacity = Math.max(0, .8 - u * 5);
+    cur.pos.set(seatPos.x + rnd(-.05, .05), seatPos.y + rnd(-.05, .05) - u * u * 2, seatPos.z);
+    cur.roll = Math.sin(u * 13) * .25 * u;
+    parts.forEach(m => {
+      m.position.addInPlaceFromFloats(m.vel.x * dt, m.vel.y * dt, m.vel.z * dt);
+      m.rotation.addInPlaceFromFloats(m.spin.x * dt, m.spin.y * dt, m.spin.z * dt);
+    });
+  });
+};
+
+// 10km 상공 배경: 별하늘과 멀리 아래 깔린 구름층
+const air = new B.TransformNode('air', scene);
+{
+  const stars = new B.DynamicTexture('stars', 2048, scene, true), c = stars.getContext();
+  c.fillStyle = '#01030a'; c.fillRect(0, 0, 2048, 2048);
+  for (let i = 0; i < 3800; i++) {
+    c.globalAlpha = rnd(.1, 1) ** 2; c.fillStyle = '#fff';
+    c.beginPath(); c.arc(rnd(0, 2048), rnd(0, 2048), rnd(.3, 1.1), 0, 7); c.fill();
+  }
+  c.globalAlpha = 1; stars.update(false);
+  const sm = new B.StandardMaterial('starM', scene);
+  sm.emissiveTexture = stars; sm.disableLighting = true; sm.backFaceCulling = false; sm.fogEnabled = false;
+  const dome = B.MeshBuilder.CreateSphere('dome', { diameter: 18000, segments: 12 }, scene);
+  dome.material = sm; dome.parent = air; dome.position.y = CABIN_Y;
+
+  const size = 1024, cl = new B.DynamicTexture('clouds', size, scene, true), cc = cl.getContext(), img = cc.createImageData(size, size);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const v = smooth(.36, .68, fbm(x * .009, y * .009) * .7 + fbm(x * .04, y * .04) * .3), i = (y * size + x) * 4;
+    img.data[i] = 8 + v * 92; img.data[i + 1] = 14 + v * 112; img.data[i + 2] = 32 + v * 148; img.data[i + 3] = 255;
+  }
+  cc.putImageData(img, 0, 0); cl.update(false);
+  cl.uScale = cl.vScale = 3;
+  const cm = new B.StandardMaterial('cloudM', scene);
+  cm.emissiveTexture = cl; cm.disableLighting = true; cm.fogEnabled = false; cm.backFaceCulling = false;
+  const deck = B.MeshBuilder.CreateGround('deck', { width: 17000, height: 17000 }, scene);
+  deck.material = cm; deck.parent = air; deck.position.y = CABIN_Y - 1700;
+}
+air.setEnabled(false);
+const fireball = B.MeshBuilder.CreatePlane('fireball', { size: 1 }, scene);
+{
+  const m = new B.StandardMaterial('fbM', scene);
+  m.emissiveTexture = fireTex; m.opacityTexture = fireTex; m.disableLighting = true; m.fogEnabled = false;
+  m.alphaMode = B.Engine.ALPHA_ADD; m.backFaceCulling = false;
+  fireball.material = m; fireball.billboardMode = B.Mesh.BILLBOARDMODE_ALL; fireball.setEnabled(false);
+}
+const setAir = on => {
+  air.setEnabled(on);
+  skyMesh.setEnabled(!on);
+  glows.forEach(g => g.mesh.setEnabled(!on));
+  chunks.forEach(m => m.setEnabled(!on));
+  scene.fogEnabled = !on;
+  camera.maxZ = on ? 20000 : 900;
+  if (on) snowPs.stop(); else snowPs.start();
+};
+
+// 폭발로 튕겨 나가 회전하며 멀어지고, 떨어지는 도중 의식을 잃는다.
+const introEject = async () => {
+  debris.forEach(d => d.m.setEnabled(true));
+  fireball.setEnabled(true);
+  fireball.position.set(0, CABIN_Y + 4, 10);
+  fireball.scaling.setAll(46);
+  bodyPose.arm = POSES.fallArm; bodyPose.leg = POSES.fallLeg;
+  const from = cur.pos.clone();
+  let faded = false;
+  await play(9.5, (u, dt) => {
+    cur.pos.set(from.x + u * 18, from.y - u * 60 - u * u * 760, from.z - u * 1000);
+    const a = Math.PI + u * 8, b = Math.sin(u * 7) * .7 - .45;
+    cur.look.set(cur.pos.x + Math.sin(a) * Math.cos(b), cur.pos.y + Math.sin(b), cur.pos.z + Math.cos(a) * Math.cos(b));
+    cur.roll = Math.sin(u * 5) * 1.1;
+    fireball.scaling.setAll(46 + u * 90);
+    for (const d of debris) {
+      d.m.position.copyFrom(cur.pos).addInPlace(d.o).addInPlaceFromFloats(0, u * 14, -u * 26);
+      d.m.rotation.addInPlaceFromFloats(d.spin.x * dt, d.spin.y * dt, d.spin.z * dt);
+    }
+    if (u > .72 && !faded) { faded = true; $('fade').style.opacity = 1; }
+  });
+  debris.forEach(d => d.m.setEnabled(false));
+  fireball.setEnabled(false);
+};
+
+/*INTRO_NEXT*/
+const runIntro = async () => {
+  await introCabin();
+  await introBreak();
+  await introEject();
+  await hold(1.5);
+  setAir(false);
+  $('fade').style.opacity = 0;
+  lantern.setEnabled(true);
+  bodyPose.arm = POSES.skiArm; bodyPose.leg = POSES.hideLeg;
+  wearSkis(true);
+  startRun();
+};
+runIntro();
 
 const fps = $('fps');
-let frames = 0;
+let frames = 0, clock = 0;
 window.__game = S;
+S.cam = camera;
 engine.runRenderLoop(() => {
   const dt = Math.min(.05, engine.getDeltaTime() / 1000);
   if (S.mode === 'run') updateRun(dt);
-  camera.position.copyFrom(cur.pos);
+  else if (S.mode === 'intro') updateIntro(dt);
+  clock += dt;
+  updateBody(dt, clock);
+  camera.position.copyFrom(cur.pos).addInPlaceFromFloats(rnd(-pose.shake, pose.shake), rnd(-pose.shake, pose.shake), 0);
   camera.setTarget(cur.look);
   camera.rotation.z = cur.roll;
   lantern.position.copyFrom(cur.pos).addInPlaceFromFloats(.3, -.2, 0);
   lantern.direction.copyFrom(cur.look.subtract(cur.pos).normalize()).addInPlaceFromFloats(0, -.2, 0);
   updateWorld(S.z);
   snowPs.emitter.set(cur.pos.x, cur.pos.y + 9, cur.pos.z + 12);
-  skyMesh.position.set(cur.pos.x + 90, cur.pos.y + 95, cur.pos.z + 560);
-  for (const g of glows) g.mesh.position.set(cur.pos.x + 34 + g.dx, cur.pos.y + 4.5 + g.dy, cur.pos.z + VILLAGE_Z);
+  skyMesh.position.set(cur.pos.x + 90, cur.pos.y + 60, cur.pos.z + 560);
+  for (const g of glows) g.mesh.position.set(cur.pos.x + 34 + g.dx, cur.pos.y - 9 + g.dy, cur.pos.z + VILLAGE_Z);
   updateHud();
   scene.render();
   if (++frames % 20 === 0) fps.textContent = `${engine.getFps().toFixed(0)} FPS | ${scene.getTotalVertices().toLocaleString()} verts`;

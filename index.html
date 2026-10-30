@@ -123,7 +123,7 @@ const fbm = (x, y) => noise(x, y) * .5 + noise(x * 2.1, y * 2.1) * .3 + noise(x 
 
 const pathHalf = z => 3 + fbm(z * .035, 7.3) * 3.2;
 const pathX = z => 7 * Math.sin(z * .028) + 2 * Math.sin(z * .07);
-const groundY = (x, z) => {
+const surfaceY = (x, z) => {
   const dx = x - pathX(z), d = Math.abs(dx);
   const hillside = Math.max(0, -dx - 5) * .42 - Math.max(0, dx - 5) * .3;
   return smooth(4, 10.5, d) * (1.1 + d * .05) + (fbm(x * .12, z * .12) - .5) * (.25 + smooth(3, 12, d) * 2.2)
@@ -135,6 +135,26 @@ const TOTAL = 5400, SPEED = 18;
 let skyMesh, snowPs;
 const glows = [];
 const RING_YAW = 2.2;
+// 코스를 가로지르는 깊은 틈. 부스트하며 점프해야 건너간다.
+const GAP_LEN = 19, GAP_DEPTH = 70;
+const GAPS = [];
+for (let i = 0; i < 7; i++) { const z0 = 430 + i * 690 + Math.sin(i * 2.4) * 70; GAPS.push({ z0, end: z0 + GAP_LEN }); }
+const gapDepth = (x, z) => {
+  for (const g of GAPS) {
+    if (z < g.z0 - 7 || z > g.end + 7) continue;
+    const side = smooth(3, 12, Math.abs(x - pathX(z)));
+    const jag = (noise(x * .13, g.z0) - .5) * 5 * side + (noise(x * .6, g.z0 + 3) - .5) * .9;
+    const t = (z - g.z0 - jag) / GAP_LEN;
+    return smooth(0, .09, t) * (1 - smooth(.91, 1, t)) * GAP_DEPTH * (.82 + noise(x * .05, z * .2) * .25);
+  }
+  return 0;
+};
+const gapAt = z => GAPS.find(g => z >= g.z0 && z <= g.end);
+const clearOfGap = (z, before = 6, after = 6) => {
+  const g = GAPS.find(q => z > q.z0 - before && z < q.end + after);
+  return g ? g.end + after : z;
+};
+const groundY = (x, z) => surfaceY(x, z) - gapDepth(x, z);
 const canvas = document.getElementById('c');
 const engine = new B.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true }, true);
 const scene = new B.Scene(engine);
@@ -216,13 +236,28 @@ const buildChunk = (m, zStart) => {
     const nx = groundY(x - 1, z) - groundY(x + 1, z), nz = groundY(x, z - 1) - groundY(x, z + 1), l = Math.hypot(nx, 2, nz);
     n[i] = nx / l; n[i + 1] = 2 / l; n[i + 2] = nz / l;
   }
+  const col = m.colorBuf;
+  for (let i = 0, k = 0; i < p.length; i += 3, k += 4) {
+    const x = p[i], z = p[i + 2] + zStart + CH / 2, g = gapDepth(x, z);
+    let c = 1, tint = 1;
+    if (g > .15) {
+      const rock = .1 + noise(x * .5, g * .35) * .13;
+      const ledge = smooth(.55, .8, noise(x * .28, g * .5 + 4)) * (1 - smooth(4, 26, g));
+      const dark = Math.pow(1 - clamp(g / (GAP_DEPTH * .8), 0, 1), 1.8);
+      c = (rock + (1 - rock) * ledge) * dark; tint = .93;
+    }
+    col[k] = c * tint; col[k + 1] = c * (tint + .02); col[k + 2] = c; col[k + 3] = 1;
+  }
   m.updateVerticesData('position', p);
   m.updateVerticesData('normal', n);
+  m.updateVerticesData('color', col);
   m.refreshBoundingInfo();
 };
 for (let i = 0; i < CHUNKS; i++) {
   const m = B.MeshBuilder.CreateGround('ground' + i, { width: 150, height: CH, subdivisionsX: 150, subdivisionsY: 90, updatable: true }, scene);
   m.basePos = Float32Array.from(m.getVerticesData('position'));
+  m.colorBuf = new Float32Array(m.basePos.length / 3 * 4).fill(1);
+  m.setVerticesData('color', m.colorBuf, true, 4);
   m.material = snow; m.receiveShadows = true;
   buildChunk(m, -20 + i * CH);
   chunks.push(m);
@@ -302,6 +337,7 @@ const plantField = (mesh, o) => {
   const all = new Float32Array(o.count * 16), shown = new Float32Array(o.count * 16), items = [];
   const spawn = (it, z, first) => {
     let x;
+    z = clearOfGap(z);
     for (let tries = 0; tries < 12; tries++) {
       const side = rnd() < .5 ? -1 : 1;
       x = pathX(z) + side * (o.edge ? pathHalf(z) + rnd(o.dMin, o.dMax) : rnd(o.dMin, o.dMax));
@@ -567,14 +603,32 @@ const updateRun = dt => {
   S.u = clamp(S.u + S.v * dt, -lim, lim);
   if (Math.abs(S.u) === lim) S.v *= .4;
   const x = pathX(S.z) + S.u;
-  cur.pos.set(x, groundY(x, S.z) + 1.25 + Math.sin(S.t * 7) * .018 + S.y - S.dip, S.z);
+  cur.pos.set(x, surfaceY(x, S.z) + 1.25 + Math.sin(S.t * 7) * .018 + S.y - S.dip, S.z);
   const ahead = S.z + 16, ax = pathX(ahead) + S.u * .75;
-  cur.look.set(ax, groundY(ax, ahead) + 1.1, ahead);
+  cur.look.set(ax, surfaceY(ax, ahead) + 1.1, ahead);
   cur.roll = -S.v * .012;
+  const gap = gapAt(S.z);
+  if (gap && S.y <= 0) { S.mode = 'falling'; S.fall = { t: 0, gap }; return; }
   updateObstacles();
   updateBeast();
   updateKits(dt);
   if (S.z >= TOTAL && S.mode === 'run') finish(true);
+};
+
+const updateFall = dt => {
+  const f = S.fall;
+  f.t += dt;
+  cur.pos.y -= (5 + f.t * 26) * dt;
+  cur.pos.z += S.speed * .3 * dt;
+  cur.look.y -= (14 + f.t * 34) * dt;
+  cur.roll += dt * .5;
+  if (f.t > .55) { $('fade').style.transition = 'opacity .35s'; $('fade').style.opacity = 1; }
+  if (f.t > 1.05) {
+    hurt(30);
+    S.z = f.gap.end + 3; S.y = 0; S.vy = 0; S.dip = 0; S.speed = SPEED * .45; S.slow = .6;
+    $('fade').style.opacity = 0;
+    if (S.mode === 'falling') S.mode = 'run';
+  }
 };
 
 const updateHud = () => {
@@ -609,8 +663,6 @@ const makePool = (mesh, max, mat) => {
   return mesh;
 };
 makePool(boulderMesh, 40, plantMat); makePool(snagMesh, 40, plantMat); makePool(logMesh, 12); makePool(logSnow, 12);
-const crevMat = new B.StandardMaterial('crevM', scene);
-crevMat.diffuseColor = new B.Color3(.006, .009, .018); crevMat.specularColor = new B.Color3(0, 0, 0);
 const obs = [];
 let nextObs = 0, obsCount = 0;
 const writeObstacles = () => {
@@ -633,34 +685,12 @@ const writeObstacles = () => {
   }
   n.forEach((c, mesh) => { mesh.thinInstanceBufferUpdated('matrix'); mesh.thinInstanceCount = c; });
 };
-const addCrevasse = (z0, len) => {
-  const w = 60, nx = 40, nz = 6;
-  const m = B.MeshBuilder.CreateGround('crev', { width: w, height: len, subdivisionsX: nx, subdivisionsY: nz, updatable: true }, scene);
-  const p = m.getVerticesData('position');
-  const cx = pathX(z0 + len / 2);
-  for (let i = 0; i < p.length; i += 3) {
-    const edge = Math.abs(p[i + 2]) > len / 2 - .01;
-    const z = p[i + 2] + z0 + len / 2 + (edge ? rnd(-.5, .5) : 0), x = p[i] + cx;
-    p[i + 2] = z - (z0 + len / 2);
-    p[i + 1] = groundY(x, z) + .06;
-  }
-  m.updateVerticesData('position', p);
-  m.position.set(cx, 0, z0 + len / 2);
-  m.refreshBoundingInfo();
-  m.material = crevMat;
-  return m;
-};
 const spawnObstacles = () => {
   while (nextObs < S.z + 170) {
+    const free = clearOfGap(nextObs, 16, 14);
+    if (free !== nextObs) { nextObs = free; continue; }
     const z = nextObs, half = pathHalf(z);
     obsCount++;
-    if (obsCount % 11 === 0) {
-      // 크레바스: 앞에 마른 나무 두 그루가 표식이 된다.
-      const len = 19;
-      obs.push({ type: 'crevasse', z, end: z + len, mesh: addCrevasse(z, len) });
-      nextObs += len + rnd(38, 48);
-      continue;
-    }
     if (obsCount % 4 === 0) {
       obs.push({ type: 'log', z, len: half * 2 + 3, tilt: rnd(-.06, .06), h: .62 });
       nextObs += rnd(30, 40);
@@ -707,14 +737,6 @@ const updateObstacles = () => {
   S.inv = Math.max(0, (S.inv || 0) - engine.getDeltaTime() / 1000);
   for (let i = obs.length - 1; i >= 0; i--) {
     const o = obs[i];
-    if (o.type === 'crevasse') {
-      if (S.z >= o.z && S.z <= o.end && S.y <= .02) {
-        hurt(30);
-        S.z = o.end + 2; S.slow = .35; S.speed *= .35;
-      }
-      if (S.z > o.end + 40) { o.mesh.dispose(); obs.splice(i, 1); }
-      continue;
-    }
     const dz = o.z - S.z;
     if (dz < -6) { obs.splice(i, 1); changed = true; continue; }
     if (S.inv > 0 || Math.abs(dz) > .9) continue;
@@ -729,6 +751,7 @@ const updateObstacles = () => {
   if (changed || nextObs < S.z + 170) spawnObstacles();
 };
 S.obs = obs;
+S.gaps = GAPS;
 
 // 곰과 늑대: 옆에서 달려들어 덮치며, 타이밍을 맞춰 점프하면 피한다.
 const furMat = k => { const m = lit('fur' + k, ...k, .95); m.emissiveColor = new B.Color3(k[0] * .1, k[1] * .1, k[2] * .1); return m; };
@@ -755,7 +778,7 @@ const beasts = [buildBeast('wolf', [.09, .1, .12], 1), buildBeast('bear', [.055,
 let beast = null, nextBeast = 24;
 const spawnBeast = kind => {
   const b = kind === undefined ? beasts[rnd() < .62 ? 0 : 1] : beasts[kind];
-  let z = S.z + 70;
+  let z = clearOfGap(S.z + 70, 16, 14);
   for (let t = 0; t < 8 && obs.some(o => Math.abs(o.z - z) < 9); t++) z += 10;
   const half = pathHalf(z), x = pathX(z) + rnd(-1, 1) * (half - 1.3);
   beast = { b, z, x, hit: false, r: b.size > 1 ? 1.25 : .85, h: b.size > 1 ? .95 : .62 };
@@ -804,8 +827,8 @@ const updateKits = dt => {
   while (nextKit < S.z + 150) {
     const k = kits.find(q => !q.on);
     if (!k) break;
-    let z = nextKit;
-    for (let t = 0; t < 10 && obs.some(o => o.z !== undefined && o.type !== 'crevasse' && Math.abs(o.z - z) < 6); t++) z += 7;
+    let z = clearOfGap(nextKit, 16, 14);
+    for (let t = 0; t < 10 && obs.some(o => o.z !== undefined && Math.abs(o.z - z) < 6); t++) z += 7;
     k.on = true; k.z = z; k.x = pathX(z) + rnd(-1, 1) * (pathHalf(z) - 1.1);
     k.mesh.setEnabled(true);
     nextKit = z + rnd(300, 460);
@@ -1345,6 +1368,7 @@ engine.runRenderLoop(() => {
   const dt = Math.min(.05, engine.getDeltaTime() / 1000);
   if (S.mode === 'run') updateRun(dt);
   else if (S.mode === 'intro') updateIntro(dt);
+  else if (S.mode === 'falling') updateFall(dt);
   clock += dt;
   updateBody(dt, clock);
   camera.position.copyFrom(cur.pos).addInPlaceFromFloats(rnd(-pose.shake, pose.shake), rnd(-pose.shake, pose.shake), 0);

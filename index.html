@@ -11,6 +11,10 @@
   #hud.on { opacity: 1; }
   #flash { position: fixed; inset: 0; background: #ffd9a6; opacity: 0; pointer-events: none; }
   #fade { position: fixed; inset: 0; background: #000; opacity: 1; transition: opacity 1.4s; pointer-events: none; }
+  #hurt { position: fixed; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(circle, rgba(170,20,10,0) 42%, rgba(170,20,10,.7) 100%); }
+  #result { position: fixed; inset: 0; display: none; place-items: center; text-align: center; color: #f2f5fb; background: rgba(2,5,12,.62); font-family: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif; }
+  #result h1 { font-weight: 300; font-size: clamp(26px, 4vw, 42px); margin: 0 0 10px; }
+  #result p { margin: 4px 0; color: rgba(226,233,247,.75); }
   #fps { position: fixed; bottom: 4px; left: 50%; transform: translateX(-50%); color: #fff; font: 11px monospace; opacity: .35; }
   #hud {
     --ink: #f2f5fb; --dim: rgba(226,233,247,.62); --line: rgba(226,233,247,.26);
@@ -26,6 +30,9 @@
   .unit { font-size: .55em; color: var(--dim); margin-left: 2px; }
   #hp { width: min(100%, 220px); }
   .hp-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+  .st-row { margin: 9px 0 4px; }
+  .hp-bar i.st { background: #9cc4ff; box-shadow: 0 0 8px rgba(156,196,255,.45); }
+  .hp-bar i.low { background: var(--warn); box-shadow: none; }
   .hp-bar { height: 4px; background: var(--line); }
   .hp-bar i { display: block; height: 100%; width: 100%; background: var(--hp); box-shadow: 0 0 8px rgba(244,239,230,.45); }
   #route { justify-self: center; width: min(100%, 460px); text-align: center; }
@@ -57,6 +64,8 @@
   <section id="hp" aria-label="체력">
     <div class="hp-row"><span class="label">체력</span><span class="big" id="vHp">100</span></div>
     <div class="hp-bar"><i id="barHp"></i></div>
+    <div class="hp-row st-row"><span class="label">스테미나</span></div>
+    <div class="hp-bar"><i id="barSt" class="st"></i></div>
   </section>
   <section id="route" aria-label="진행도">
     <div class="big"><span id="vDist">5.40</span><span class="unit">km</span></div>
@@ -77,8 +86,12 @@
   </section>
   <section id="keys" aria-label="조작법">
     <span><kbd>A</kbd><kbd>D</kbd>또는 <kbd>←</kbd><kbd>→</kbd>좌우 이동</span>
+    <span><kbd>Shift</kbd>부스트</span>
+    <span><kbd>Space</kbd>점프</span>
   </section>
 </div>
+<div id="hurt"></div>
+<div id="result"><div><h1 id="rTitle"></h1><p id="rScore"></p><p><kbd>R</kbd>다시 시작</p></div></div>
 <div id="flash"></div>
 <div id="fade"></div>
 <div id="fps"></div>
@@ -437,27 +450,47 @@ ssao.radius = 1.4; ssao.totalStrength = 1.15; ssao.samples = 8; ssao.maxZ = 120;
 
 // 게임 상태
 const $ = id => document.getElementById(id);
-const S = { mode: 'intro', z: 0, u: 0, v: 0, t: 0, hp: 100, coins: 0 };
+const JUMP_COST = 18, JUMP_POWER = 6.2, GRAVITY = 16, BOOST = 1.6;
+const S = { mode: 'intro', z: 0, u: 0, v: 0, t: 0, hp: 100, coins: 0, st: 100, y: 0, vy: 0, speed: SPEED, slow: 1, spent: false };
 const keys = {};
-addEventListener('keydown', e => { keys[e.code] = true; });
+addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
+  if (e.code === 'Space' && S.mode === 'run' && S.y === 0 && S.st >= JUMP_COST) { S.vy = JUMP_POWER; S.y = .001; S.st -= JUMP_COST; }
+});
 addEventListener('keyup', e => { keys[e.code] = false; });
 
 const cur = { pos: camera.position.clone(), look: camera.getTarget().clone(), roll: 0 };
 
 const updateRun = dt => {
   S.t += dt;
-  S.z = Math.min(TOTAL, S.z + SPEED * Math.min(1, .25 + S.t / 2.5) * dt);
+  // 부스트: 스테미나를 쓰며, 다 쓰면 어느 정도 찰 때까지 다시 못 쓴다.
+  if (S.st <= 0) S.spent = true;
+  if (S.st > 25) S.spent = false;
+  const boosting = (keys.ShiftLeft || keys.ShiftRight) && !S.spent;
+  S.st = clamp(S.st + (boosting ? -26 : 11) * dt, 0, 100);
+  S.slow = Math.min(1, S.slow + dt * .5);
+  const want = SPEED * (boosting ? BOOST : 1) * S.slow * Math.min(1, .25 + S.t / 2.5);
+  S.speed += (want - S.speed) * Math.min(1, dt * 5);
+  S.z = Math.min(TOTAL, S.z + S.speed * dt);
+  if (S.y > 0) {
+    S.vy -= GRAVITY * dt;
+    S.y += S.vy * dt;
+    if (S.y <= 0) { S.y = 0; S.vy = 0; S.dip = .22; }
+  }
+  S.dip = Math.max(0, (S.dip || 0) - dt * .9);
   const dir = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0);
   S.v += (dir * 7 - S.v) * Math.min(1, dt * 7);
   const lim = pathHalf(S.z) - .5;
   S.u = clamp(S.u + S.v * dt, -lim, lim);
   if (Math.abs(S.u) === lim) S.v *= .4;
   const x = pathX(S.z) + S.u;
-  cur.pos.set(x, groundY(x, S.z) + 1.25 + Math.sin(S.t * 7) * .018, S.z);
+  cur.pos.set(x, groundY(x, S.z) + 1.25 + Math.sin(S.t * 7) * .018 + S.y - S.dip, S.z);
   const ahead = S.z + 16, ax = pathX(ahead) + S.u * .75;
   cur.look.set(ax, groundY(ax, ahead) + 1.1, ahead);
   cur.roll = -S.v * .012;
-  if (S.z >= TOTAL) { S.mode = 'end'; }
+  updateObstacles();
+  if (S.z >= TOTAL && S.mode === 'run') finish(true);
 };
 
 const updateHud = () => {
@@ -466,14 +499,154 @@ const updateHud = () => {
   $('tDone').style.width = pct + '%';
   $('tMe').style.left = pct + '%';
   $('vTime').textContent = String(Math.floor(sec / 60)).padStart(2, '0') + ':' + String(sec % 60).padStart(2, '0');
-  $('vHp').textContent = S.hp;
+  $('vHp').textContent = Math.ceil(S.hp);
+  $('barSt').style.width = S.st + '%';
+  $('barSt').classList.toggle('low', S.spent);
   $('barHp').style.width = S.hp + '%';
   $('vCoin').textContent = S.coins;
   $('vScore').textContent = (Math.floor(S.t * 10) + S.coins * 50).toLocaleString();
 };
 
+// 장애물: 항상 지나갈 틈을 남기고, 통나무는 점프, 크레바스는 부스트와 점프로만 넘는다.
+const boulderMesh = buildRock('boulder');
+const snagMesh = buildPlant({ name: 'snag', depth: 3, stems: 1, len: 2.7, radius: .2, spread: .7, lean: .08, barkDepth: 4, needles: 3 });
+const logMesh = B.MeshBuilder.CreateCylinder('log', { diameter: .62, height: 1, tessellation: 12 }, scene);
+logMesh.material = lit('logM', .15, .11, .08, .9);
+const logSnow = B.MeshBuilder.CreateBox('logSnow', { width: .42, height: 1, depth: .42 }, scene);
+logSnow.material = lit('logSnowM', .86, .9, 1, .85);
+logSnow.position.y = .0;
+const makePool = (mesh, max, mat) => {
+  mesh.buf = new Float32Array(max * 16);
+  mesh.thinInstanceSetBuffer('matrix', mesh.buf, 16, false);
+  mesh.thinInstanceCount = 0;
+  mesh.alwaysSelectAsActiveMesh = true; mesh.receiveShadows = true;
+  if (mat) mesh.material = mat;
+  shadow.addShadowCaster(mesh);
+  return mesh;
+};
+makePool(boulderMesh, 40, plantMat); makePool(snagMesh, 40, plantMat); makePool(logMesh, 12); makePool(logSnow, 12);
+const crevMat = new B.StandardMaterial('crevM', scene);
+crevMat.diffuseColor = new B.Color3(.006, .009, .018); crevMat.specularColor = new B.Color3(0, 0, 0);
+const obs = [];
+let nextObs = 0, obsCount = 0;
+const writeObstacles = () => {
+  const n = new Map([[boulderMesh, 0], [snagMesh, 0], [logMesh, 0], [logSnow, 0]]);
+  const put = (mesh, sc, q, pos) => {
+    const i = n.get(mesh);
+    if (i * 16 >= mesh.buf.length) return;
+    B.Matrix.Compose(sc, q, pos).copyToArray(mesh.buf, i * 16);
+    n.set(mesh, i + 1);
+  };
+  for (const o of obs) {
+    if (o.type === 'boulder') put(boulderMesh, new B.Vector3(o.r, o.r, o.r), o.q, new B.Vector3(o.x, groundY(o.x, o.z) - .1, o.z));
+    if (o.type === 'snag') put(snagMesh, new B.Vector3(1, 1, 1), o.q, new B.Vector3(o.x, groundY(o.x, o.z) - .2, o.z));
+    if (o.type === 'log') {
+      const y = groundY(pathX(o.z), o.z);
+      const q = B.Quaternion.RotationYawPitchRoll(o.tilt, 0, Math.PI / 2);
+      put(logMesh, new B.Vector3(1, o.len, 1), q, new B.Vector3(pathX(o.z), y + .33, o.z));
+      put(logSnow, new B.Vector3(1, o.len, 1), q, new B.Vector3(pathX(o.z), y + .52, o.z));
+    }
+  }
+  n.forEach((c, mesh) => { mesh.thinInstanceBufferUpdated('matrix'); mesh.thinInstanceCount = c; });
+};
+const addCrevasse = (z0, len) => {
+  const w = 60, nx = 40, nz = 6;
+  const m = B.MeshBuilder.CreateGround('crev', { width: w, height: len, subdivisionsX: nx, subdivisionsY: nz, updatable: true }, scene);
+  const p = m.getVerticesData('position');
+  const cx = pathX(z0 + len / 2);
+  for (let i = 0; i < p.length; i += 3) {
+    const edge = Math.abs(p[i + 2]) > len / 2 - .01;
+    const z = p[i + 2] + z0 + len / 2 + (edge ? rnd(-.5, .5) : 0), x = p[i] + cx;
+    p[i + 2] = z - (z0 + len / 2);
+    p[i + 1] = groundY(x, z) + .06;
+  }
+  m.updateVerticesData('position', p);
+  m.position.set(cx, 0, z0 + len / 2);
+  m.refreshBoundingInfo();
+  m.material = crevMat;
+  return m;
+};
+const spawnObstacles = () => {
+  while (nextObs < S.z + 170) {
+    const z = nextObs, half = pathHalf(z);
+    obsCount++;
+    if (obsCount % 11 === 0) {
+      // 크레바스: 앞에 마른 나무 두 그루가 표식이 된다.
+      const len = 19;
+      obs.push({ type: 'crevasse', z, end: z + len, mesh: addCrevasse(z, len) });
+      nextObs += len + rnd(38, 48);
+      continue;
+    }
+    if (obsCount % 4 === 0) {
+      obs.push({ type: 'log', z, len: half * 2 + 3, tilt: rnd(-.06, .06), h: .62 });
+      nextObs += rnd(30, 40);
+      continue;
+    }
+    const gap = rnd(-half + 1.3, half - 1.3);
+    const count = 1 + Math.floor(rnd(0, 3));
+    for (let i = 0; i < count; i++) {
+      for (let t = 0; t < 8; t++) {
+        const u = rnd(-half, half), big = rnd() < .55;
+        const r = big ? rnd(.55, 1) : .45;
+        if (Math.abs(u - gap) < 1.5 + r) continue;
+        obs.push({ type: big ? 'boulder' : 'snag', z: z + rnd(-1.5, 1.5), x: pathX(z) + u, r, h: big ? r * 1.15 : 9,
+          q: B.Quaternion.RotationAxis(B.Axis.Y, rnd(0, 6.28)) });
+        break;
+      }
+    }
+    nextObs += rnd(24, 38);
+  }
+  writeObstacles();
+};
+const hurt = amount => {
+  S.hp = Math.max(0, S.hp - amount);
+  $('hurt').style.transition = 'none';
+  $('hurt').style.opacity = 1;
+  requestAnimationFrame(() => { $('hurt').style.transition = 'opacity .9s'; $('hurt').style.opacity = 0; });
+  if (S.hp <= 0) finish(false);
+};
+const finish = won => {
+  S.mode = won ? 'won' : 'dead';
+  $('rTitle').textContent = won ? '민가에 도착했다' : '더 나아갈 수 없었다';
+  $('rScore').textContent = `점수 ${$('vScore').textContent} · 시간 ${$('vTime').textContent}`;
+  $('result').style.display = 'grid';
+};
+addEventListener('keydown', e => {
+  if (e.code === 'KeyR' && (S.mode === 'dead' || S.mode === 'won')) { location.hash = '#run'; location.reload(); }
+});
+const updateObstacles = () => {
+  let changed = false;
+  const px = pathX(S.z) + S.u;
+  S.inv = Math.max(0, (S.inv || 0) - engine.getDeltaTime() / 1000);
+  for (let i = obs.length - 1; i >= 0; i--) {
+    const o = obs[i];
+    if (o.type === 'crevasse') {
+      if (S.z >= o.z && S.z <= o.end && S.y <= .02) {
+        hurt(30);
+        S.z = o.end + 2; S.slow = .35; S.speed *= .35;
+      }
+      if (S.z > o.end + 40) { o.mesh.dispose(); obs.splice(i, 1); }
+      continue;
+    }
+    const dz = o.z - S.z;
+    if (dz < -6) { obs.splice(i, 1); changed = true; continue; }
+    if (S.inv > 0 || Math.abs(dz) > .9) continue;
+    const hit = o.type === 'log' ? S.y < o.h : Math.abs(o.x - px) < o.r + .3 && S.y < o.h;
+    if (hit) {
+      hurt(18);
+      S.inv = 1; S.slow = .45; S.speed *= .6;
+      burst(new B.Vector3(px, cur.pos.y - .3, S.z + 1), 90, new B.Color4(.85, .9, 1, .8), new B.Color4(.65, .75, 1, .3), .14, 3, snowPs.particleTexture);
+      if (o.type !== 'snag') { obs.splice(i, 1); changed = true; }
+    }
+  }
+  if (changed || nextObs < S.z + 170) spawnObstacles();
+};
+S.obs = obs;
+
 const startRun = () => {
   S.mode = 'run'; S.v = 0; S.t = 0;
+  nextObs = S.z + 50;
+  spawnObstacles();
   $('hud').classList.add('on');
 };
 

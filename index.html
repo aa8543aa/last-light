@@ -499,7 +499,7 @@ const updateHud = () => {
 };
 
 const startRun = () => {
-  S.mode = 'run'; S.z = 0; S.u = 0; S.v = 0; S.t = 0;
+  S.mode = 'run'; S.v = 0; S.t = 0;
   $('hud').classList.add('on');
 };
 
@@ -523,13 +523,31 @@ const makeLeg = side => {
   boot.parent = leg; boot.position.set(0, .48, -.08); boot.rotation.x = 1.2;
   return { mesh: leg, boot, side };
 };
+const wood = lit('wood', .26, .18, .11, .85), scrapMat = lit('scrap', .34, .35, .37, .45), rope = lit('rope', .3, .27, .2, .9);
+scrapMat.metallic = .75;
+const crudeSki = side => {
+  const root = new B.TransformNode('crudeSki', scene);
+  const box = (w, h, d, x, y, z, mat, rx = 0, ry = 0) => {
+    const m = B.MeshBuilder.CreateBox('skiPart', { width: w, height: h, depth: d }, scene);
+    m.material = mat; m.parent = root; m.position.set(x, y, z); m.rotation.set(rx, ry, 0);
+    return m;
+  };
+  box(.13, .025, 1.75, 0, 0, 0, wood, 0, side * .012);
+  box(.09, .02, .95, side * .018, .022, -.2, wood, 0, -side * .03);
+  box(.15, .012, .46, -side * .01, .05, .98, scrapMat, -.42, side * .05);
+  for (const z of [-.42, -.08, .26, .62]) box(.17, .03, .035, 0, .03, z + rnd(-.03, .03), rope, 0, rnd(-.18, .18));
+  return root;
+};
 const makeSki = side => {
-  const ski = B.MeshBuilder.CreateBox('ski', { width: .1, height: .022, depth: 1.8 }, scene);
-  const tip = B.MeshBuilder.CreateBox('tip', { width: .1, height: .022, depth: .24 }, scene);
-  ski.material = tip.material = skiMat;
-  tip.parent = ski; tip.position.set(0, .05, 1); tip.rotation.x = -.5;
-  ski.parent = camera; ski.isVisible = tip.isVisible = false;
-  return { mesh: ski, tip, side };
+  const root = crudeSki(side);
+  root.parent = camera; root.setEnabled(false);
+  return { mesh: root, side };
+};
+// 나뭇가지 지팡이
+const makePole = arm => {
+  const m = B.MeshBuilder.CreateCylinder('pole', { height: 1.5, diameterTop: .028, diameterBottom: .018, tessellation: 6 }, scene);
+  m.material = wood; m.parent = arm.mesh; m.position.set(0, .28, -.02); m.rotation.x = 1.25; m.setEnabled(false);
+  return m;
 };
 const arms = [makeArm(-1), makeArm(1)], legs = [makeLeg(-1), makeLeg(1)], skis = [makeSki(-1), makeSki(1)];
 // 자세: 기준 위치와 회전을 좌우 대칭으로 지정한다.
@@ -537,10 +555,13 @@ const bodyPose = { arm: null, leg: null, rate: 8 };
 const POSES = {
   seatArm: { p: [.25, -.25, .46], r: [1.3, 0, -.08] },
   seatLeg: { p: [.15, -.42, .72], r: [1.15, 0, 0] },
-  fallArm: { p: [.62, -.2, .55], r: [.55, 0, -1.3] },
+  fallArm: { p: [.66, -.42, .55], r: [.55, 0, -1.3] },
   fallLeg: { p: [.24, -.6, .8], r: [1.05, 0, -.2] },
   skiArm: { p: [.38, -.3, .58], r: [1.25, 0, -.2] },
   skiLeg: { p: [.16, -1.1, .15], r: [.25, 0, 0] },
+  climbArm: { p: [.3, .02, .5], r: [.22, 0, -.12] },
+  reachArm: { p: [.26, -.26, .62], r: [1.45, 0, .1] },
+  craftArm: { p: [.16, -.36, .5], r: [1.5, 0, .55] },
   hideArm: { p: [.4, -1.3, .1], r: [.3, 0, 0] },
   hideLeg: { p: [.16, -1.6, .1], r: [.2, 0, 0] },
 };
@@ -556,7 +577,7 @@ const setPart = (part, pose, k, wob) => {
 };
 const updateBody = (dt, time) => {
   const k = Math.min(1, dt * bodyPose.rate), flail = bodyPose.arm === POSES.fallArm ? 1 : 0;
-  arms.forEach((a, i) => setPart(a, bodyPose.arm, k, flail ? Math.sin(time * 9 + i * 2) * 1.6 : Math.sin(time * 2 + i) * .08));
+  arms.forEach((a, i) => setPart(a, bodyPose.arm, k, flail ? Math.sin(time * 9 + i * 2) * 1.6 : Math.sin(time * (bodyPose.wob ? 11 : 2) + i * 2) * (bodyPose.wob ? .8 : .08)));
   legs.forEach((l, i) => setPart(l, bodyPose.leg, k, flail ? Math.sin(time * 7 + i * 3) * 1.2 : 0));
   skis.forEach(sk => {
     sk.mesh.position.set(sk.side * .2 + S.v * .006, -1.16, 1.6);
@@ -564,7 +585,8 @@ const updateBody = (dt, time) => {
     sk.mesh.rotation.z = -S.v * .012;
   });
 };
-const wearSkis = on => skis.forEach(sk => { sk.mesh.isVisible = on; sk.tip.isVisible = on; });
+const poles = arms.map(makePole);
+const wearSkis = on => { skis.forEach(sk => sk.mesh.setEnabled(on)); poles.forEach(m => m.setEnabled(on)); };
 
 // 기내: 지면과 멀리 떨어진 높은 곳에 만든다.
 const CABIN_Y = 1500;
@@ -825,6 +847,7 @@ const air = new B.TransformNode('air', scene);
     }
     c.putImageData(d, 0, 0); t.update(false); t.hasAlpha = true;
     t.uScale = t.vScale = scale;
+    t.anisotropicFilteringLevel = 16;
     const m = new B.StandardMaterial(name + 'M', scene);
     m.emissiveTexture = t; m.opacityTexture = t; m.disableLighting = true; m.fogEnabled = false; m.backFaceCulling = false;
     const g = B.MeshBuilder.CreateGround(name, { width: 15000, height: 15000 }, scene);
@@ -877,15 +900,135 @@ const introEject = async () => {
   fireball.setEnabled(false);
 };
 
-/*INTRO_NEXT*/
+// 지상 소품: 추락한 잔해와 재료
+const onGround = (m, x, z, up = 0) => { m.position.set(x, groundY(x, z) + up, z); m.receiveShadows = true; return m; };
+const fuselage = onGround(B.MeshBuilder.CreateCylinder('fuselage', { diameter: 2.4, height: 8, tessellation: 18, cap: B.Mesh.NO_CAP, sideOrientation: B.Mesh.DOUBLESIDE }, scene), landX - 11, 13, .7);
+fuselage.rotation.set(.35, .5, 1.25); fuselage.material = metal; shadow.addShadowCaster(fuselage);
+const wing = onGround(B.MeshBuilder.CreateBox('wing', { width: 6.5, height: .16, depth: 1.8 }, scene), landX + 10, 11, .5);
+wing.rotation.set(.24, -.6, .3); wing.material = metal; shadow.addShadowCaster(wing);
+const seatWreck = onGround(B.MeshBuilder.CreateBox('seatWreck', { width: .55, height: .8, depth: .5 }, scene), landX + 3, 3.2, .3);
+seatWreck.rotation.set(.5, .9, .6); seatWreck.material = flat('seatW', .08, .09, .13);
+const giftWreck = onGround(B.MeshBuilder.CreateBox('giftWreck', { width: .26, height: .14, depth: .2 }, scene), landX - .55, 3.1, .06);
+giftWreck.rotation.set(.2, .7, .18); giftWreck.material = lit('giftW', .36, .03, .04, .7);
+const parts = [
+  { m: onGround(B.MeshBuilder.CreateBox('plank', { width: .3, height: .04, depth: 1.8 }, scene), landX - 1.8, 5, .03), mat: wood },
+  { m: onGround(B.MeshBuilder.CreateBox('scrapP', { width: .7, height: .025, depth: .6 }, scene), landX + 1.6, 6.1, .03), mat: scrapMat },
+  { m: onGround(B.MeshBuilder.CreateCylinder('branch', { height: 1.6, diameterTop: .025, diameterBottom: .05, tessellation: 6 }, scene), landX + .1, 7.5, .05), mat: wood },
+];
+parts.forEach(k => { k.m.material = k.mat; k.m.rotation.y = rnd(-.8, .8); });
+parts[2].m.rotation.x = Math.PI / 2;
+const hole = B.MeshBuilder.CreateCylinder('hole', { diameter: 2.1, height: 3, tessellation: 20, cap: B.Mesh.NO_CAP, sideOrientation: B.Mesh.BACKSIDE }, scene);
+const holeMat = lit('holeM', .78, .84, .95, .9);
+holeMat.bumpTexture = normalTex; holeMat.emissiveColor = new B.Color3(.018, .028, .05);
+holeMat.backFaceCulling = false;
+hole.material = holeMat; hole.position.set(landX, landY - 1.5, 0); hole.setEnabled(false);
+const rim = B.MeshBuilder.CreateTorus('rim', { diameter: 2.3, thickness: .55, tessellation: 24 }, scene);
+rim.material = snow; rim.position.set(landX, landY + .03, 0); rim.scaling.y = .45; rim.receiveShadows = true; rim.setEnabled(false);
+const flakeTex = snowPs.particleTexture;
+const skiProps = [crudeSki(-1), crudeSki(1)];
+skiProps.forEach(k => k.setEnabled(false));
+
+const standAt = (x, z, h = 1.45) => pose.pos.set(x, groundY(x, z) + h, z);
+const lookAt = (x, y, z) => pose.look.set(x, y, z);
+
+// 깊은 눈 속에서 깨어나 밖으로 기어 나온다.
+const introWake = async () => {
+  hole.setEnabled(true); rim.setEnabled(true);
+  bodyPose.arm = POSES.hideArm; bodyPose.leg = POSES.hideLeg;
+  scene.fogDensity = .013;
+  cur.pos.set(landX, landY - 2.5, -.1);
+  cur.look.set(landX + .12, landY + 4, .7);
+  cur.roll = .3;
+  await hold(.6);
+  // 눈꺼풀이 몇 번 깜빡이며 뜬다.
+  const fade = $('fade');
+  fade.style.transition = 'opacity 1.1s';
+  fade.style.opacity = .35; await hold(1.3);
+  fade.style.opacity = .95; await hold(1);
+  fade.style.opacity = .2; await hold(1.3);
+  fade.style.opacity = .8; await hold(.7);
+  fade.style.opacity = 0; await hold(1.6);
+  bodyPose.rate = 3;
+  bodyPose.arm = POSES.climbArm;
+  const startY = cur.pos.y, endY = landY + .9;
+  await play(4.6, u => {
+    // 세 번에 나눠 몸을 끌어올린다.
+    const heave = (Math.floor(u * 3) + smooth(.2, .8, (u * 3) % 1)) / 3;
+    cur.pos.set(landX, startY + (endY - startY) * heave, -.1 + heave * .3);
+    cur.look.set(landX + .1 * (1 - heave), landY + 4 - heave * 3, .7 + heave * 6);
+    cur.roll = .3 * (1 - heave) + Math.sin(u * 19) * .025;
+    if (Math.random() < .03) burst(cur.pos.add(new B.Vector3(0, .6, .4)), 30, new B.Color4(.8, .86, 1, .7), new B.Color4(.6, .7, 1, .25), .12, 1.4, flakeTex);
+  });
+  burst(new B.Vector3(landX, landY + .4, .4), 260, new B.Color4(.85, .9, 1, .8), new B.Color4(.65, .75, 1, .3), .22, 3.2, flakeTex);
+  hole.setEnabled(false);
+  lantern.setEnabled(true);
+  bodyPose.arm = POSES.hideArm;
+  bodyPose.rate = 6;
+  pose.on = true; pose.rate = 1.4;
+  pose.pos.copyFrom(cur.pos); pose.look.copyFrom(cur.look); pose.roll = 0;
+  standAt(landX, .2);
+};
+
+// 주변을 둘러보고, 선물을 줍고, 먼 불빛을 발견한다.
+const introDiscover = async () => {
+  lookAt(landX - 11, landY + 1, 13); await hold(2.8);
+  lookAt(landX + 10, landY, 11); await hold(2.6);
+  lookAt(landX - .55, landY - .3, 3.1); pose.rate = 1.8; standAt(landX - .3, 1.8, 1); await hold(1.8);
+  bodyPose.arm = POSES.reachArm; await hold(1);
+  giftWreck.setEnabled(false);
+  gift.setEnabled(true); gift.position.set(0, -.3, .55);
+  bodyPose.arm = POSES.seatArm; await hold(1.7);
+  gift.setEnabled(false);
+  bodyPose.arm = POSES.hideArm;
+  standAt(landX, 2.2); pose.rate = .9;
+  lookAt(landX + VILLAGE_X, cur.pos.y - 7, VILLAGE_Z); await hold(4.4);
+};
+
+// 잔해를 모아 엉성한 스키를 묶고, 묶는 순간 바로 출발한다.
+const introCraft = async () => {
+  pose.rate = 1.6;
+  const steps = [[-1.8, 5], [1.6, 6.1], [.1, 7.5]];
+  for (let i = 0; i < 3; i++) {
+    const [dx, z] = steps[i];
+    standAt(landX + dx * .55, z - 1.15, 1.25);
+    lookAt(landX + dx, groundY(landX + dx, z), z);
+    await hold(1.5);
+    bodyPose.arm = POSES.reachArm; await hold(.8);
+    parts[i].m.setEnabled(false);
+    bodyPose.arm = POSES.hideArm; await hold(.3);
+  }
+  const z = 7.6, x = pathX(z), y = groundY(x, z);
+  skiProps.forEach((k, i) => {
+    k.setEnabled(true);
+    k.position.set(x + (i ? .24 : -.24), y + .03, z + 1.25);
+    k.rotation.set(0, i ? -.05 : .08, 0);
+  });
+  standAt(x, z, .95);
+  lookAt(x, y, z + 1.25);
+  await hold(1.2);
+  bodyPose.arm = POSES.craftArm; bodyPose.rate = 4;
+  await play(3.6, () => { bodyPose.wob = 1; });
+  bodyPose.wob = 0; bodyPose.rate = 6;
+  standAt(x, z, 1.25);
+  const ax = pathX(z + 16);
+  lookAt(ax, groundY(ax, z + 16) + 1.1, z + 16);
+  pose.rate = 3.2;
+  await hold(1.1);
+  skiProps.forEach(k => k.setEnabled(false));
+  pose.on = false;
+  S.z = z; S.u = cur.pos.x - x;
+};
+
 const runIntro = async () => {
   await introCabin();
   await introBreak();
   await introEject();
   await hold(1.5);
   setAir(false);
-  $('fade').style.opacity = 0;
-  lantern.setEnabled(true);
+  lantern.setEnabled(false);
+  await introWake();
+  await introDiscover();
+  await introCraft();
   bodyPose.arm = POSES.skiArm; bodyPose.leg = POSES.hideLeg;
   wearSkis(true);
   startRun();

@@ -104,7 +104,7 @@ const groundY = (x, z) => {
   return smooth(2.6, 9, d) * (1.1 + d * .05) + (fbm(x * .12, z * .12) - .5) * (.25 + smooth(3, 12, d) * 2.2) - z * .035;
 };
 
-const VILLAGE_Z = 170, VILLAGE_X = pathX(170);
+const VILLAGE_Z = 170, VILLAGE_X = 34;
 const canvas = document.getElementById('c');
 const engine = new B.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true });
 const scene = new B.Scene(engine);
@@ -115,14 +115,14 @@ scene.fogDensity = .013;
 
 const camY = groundY(pathX(0), 0) + 1.3;
 const camera = new B.UniversalCamera('cam', new B.Vector3(pathX(0), camY, 0), scene);
-camera.setTarget(new B.Vector3(VILLAGE_X * .1 + pathX(0) * .9, camY + 1.2, 17));
+camera.setTarget(new B.Vector3(VILLAGE_X * 22 / VILLAGE_Z, camY + .9, 22));
 camera.fov = 1.0;
 camera.minZ = .1;
 camera.maxZ = 900;
 camera.attachControl(canvas, true);
 
 // 조명: 달빛, 하늘빛, 플레이어 앞의 약한 랜턴 빛
-const moon = new B.DirectionalLight('moon', new B.Vector3(.55, -.7, -.45).normalize(), scene);
+const moon = new B.DirectionalLight('moon', new B.Vector3(-.72, -.62, .32).normalize(), scene);
 moon.diffuse = new B.Color3(.62, .74, 1);
 moon.intensity = 1.5;
 const hemi = new B.HemisphericLight('hemi', new B.Vector3(0, 1, 0), scene);
@@ -216,14 +216,25 @@ function buildPlant(opts) {
       ind.push(base + s, base + sides + s, base + n, base + n, base + sides + s, base + sides + n);
     }
   };
+  const flake = (c, size) => {
+    const base = pos.length / 3;
+    const nx = rnd(-.45, .45), ny = 1, nz = rnd(-.45, .45), l = Math.hypot(nx, ny, nz);
+    for (let i = 0; i < 3; i++) {
+      const a = i * 2.09 + rnd(-.5, .5);
+      pos.push(c.x + Math.cos(a) * size, c.y + rnd(-size, size), c.z + Math.sin(a) * size);
+      nor.push(nx / l, ny / l, nz / l);
+      const w = rnd(.82, 1);
+      col.push(w * .95, w * .97, w, 1);
+    }
+    ind.push(base, base + 1, base + 2);
+  };
   const grow = (p, d, len, r, depth) => {
     const end = p.add(d.scale(len));
-    tube(p, end, r, r * .68, depth > 3 ? 6 : depth > 1 ? 4 : 3, depth >= opts.barkDepth ? .1 : .55 + (opts.barkDepth - depth) * .12);
+    tube(p, end, r, r * .68, depth > 3 ? 6 : depth > 1 ? 4 : 3, depth >= opts.barkDepth ? .1 : .68 + (opts.barkDepth - depth) * .1);
     if (depth <= 2) for (let i = 0; i < opts.needles; i++) {
       // 상고대 결정: 가지에서 바람 방향으로 뻗는 흰 침상 구조
-      const a = p.add(d.scale(rnd(0, len)));
-      const nd = new B.Vector3(rnd(-1, 1), rnd(-.2, 1), rnd(-1, 1)).normalize();
-      tube(a, a.add(nd.scale(rnd(.025, .075))), rnd(.005, .01), .002, 3, 1);
+      const a = p.add(d.scale(rnd(0, len))).add(new B.Vector3(rnd(-.05, .05), rnd(-.02, .06), rnd(-.05, .05)));
+      flake(a, rnd(.008, .022));
     }
     if (depth === 0) return;
     const kids = depth > opts.depth - 2 ? 2 + Math.round(rnd()) : 3;
@@ -263,22 +274,21 @@ const place = (count, zMin, zMax, dMin, dMax, sMin, sMax) => {
   for (let i = 0; i < count; i++) {
     const z = rnd(zMin, zMax), side = rnd() < .5 ? -1 : 1, d = rnd(dMin, dMax), x = pathX(z) + side * d;
     const lineX = pathX(0) + (VILLAGE_X - pathX(0)) * z / VILLAGE_Z;
-    if (z > 12 && z < VILLAGE_Z + 20 && Math.abs(x - lineX) < 3.5 + z * .06) continue;
+    if (z > 12 && z < VILLAGE_Z + 20 && Math.abs(x - lineX) < 6 + z * .07) continue;
     out.push({ x, z, y: groundY(x, z) - .1, s: rnd(sMin, sMax) });
   }
   return out;
 };
 
-const heroTree = buildPlant({ name: 'hero', depth: 6, stems: 3, len: 2.5, radius: .13, spread: .62, lean: .22, barkDepth: 5, needles: 9 });
+const heroTree = buildPlant({ name: 'hero', depth: 6, stems: 3, len: 2.5, radius: .13, spread: .62, lean: .22, barkDepth: 5, needles: 24 });
 const farTree = buildPlant({ name: 'far', depth: 4, stems: 3, len: 3, radius: .17, spread: .72, lean: .22, barkDepth: 4, needles: 0 });
-const shrub = buildPlant({ name: 'shrub', depth: 5, stems: 7, len: .72, radius: .022, spread: .8, lean: .55, barkDepth: 5, needles: 9 });
+const shrub = buildPlant({ name: 'shrub', depth: 5, stems: 7, len: .72, radius: .022, spread: .8, lean: .55, barkDepth: 5, needles: 18 });
 
-scatter(heroTree, place(70, -6, 60, 6, 20, .9, 1.35));
+scatter(heroTree, place(44, -6, 60, 6, 20, .9, 1.35));
 scatter(farTree, place(900, 30, 300, 7, 72, .9, 1.5).concat(place(160, -10, 30, 20, 72, 1, 1.5)));
-scatter(shrub, place(280, -6, 110, 3.4, 8, .8, 1.5));
+scatter(shrub, place(170, -6, 110, 3.4, 8, .8, 1.5));
 shadow.addShadowCaster(heroTree);
 shadow.addShadowCaster(shrub);
-shadow.addShadowCaster(farTree);
 
 // 울타리: 어두운 기둥과 위에 눈이 쌓인 난간
 const postMat = lit('post', .03, .028, .03, .55);
@@ -341,7 +351,7 @@ for (const side of [-1, 1]) {
   m.emissiveTexture = tex; m.disableLighting = true; m.fogEnabled = false; m.backFaceCulling = false;
   m.emissiveTexture.level = 1;
   const sky = B.MeshBuilder.CreatePlane('sky', { width: 1500, height: 750 }, scene);
-  sky.position.set(camera.position.x, 90, 560);
+  sky.position.set(VILLAGE_X * 3.3, 90, 560);
   sky.material = m;
   sky.applyFog = false;
 }
@@ -350,14 +360,14 @@ for (const side of [-1, 1]) {
 {
   const size = 256, tex = new B.DynamicTexture('glow', size, scene, true), c = tex.getContext();
   const g = c.createRadialGradient(128, 128, 0, 128, 128, 128);
-  g.addColorStop(0, 'rgba(255,214,150,1)'); g.addColorStop(.18, 'rgba(255,160,80,.42)'); g.addColorStop(1, 'rgba(255,120,40,0)');
+  g.addColorStop(0, 'rgba(255,224,176,.95)'); g.addColorStop(.1, 'rgba(255,176,104,.3)'); g.addColorStop(.45, 'rgba(255,140,70,.05)'); g.addColorStop(1, 'rgba(255,120,40,0)');
   c.fillStyle = g; c.fillRect(0, 0, size, size); tex.update(false); tex.hasAlpha = true;
   const m = new B.StandardMaterial('glowM', scene);
   m.emissiveTexture = tex; m.opacityTexture = tex; m.disableLighting = true; m.fogEnabled = false;
   m.alphaMode = B.Engine.ALPHA_ADD; m.backFaceCulling = false;
-  [[0, 0, 26], [-7, 1, 9], [6, -.6, 11]].forEach(([dx, dy, s], i) => {
+  [[0, 0, 12], [-5, .4, 5], [5.5, -.3, 6]].forEach(([dx, dy, s], i) => {
     const z = VILLAGE_Z, x = VILLAGE_X + dx, gl = B.MeshBuilder.CreatePlane('g' + i, { size: s }, scene);
-    gl.position.set(x, camY + 3.2 + dy, z);
+    gl.position.set(x, camY + 4.5 + dy, z);
     gl.billboardMode = B.Mesh.BILLBOARDMODE_ALL;
     gl.material = m;
   });
@@ -385,7 +395,7 @@ for (const side of [-1, 1]) {
 
 // 후처리
 const pipe = new B.DefaultRenderingPipeline('pipe', true, scene, [camera]);
-pipe.samples = 4;
+pipe.samples = 2;
 pipe.fxaaEnabled = true;
 pipe.bloomEnabled = true; pipe.bloomThreshold = .72; pipe.bloomWeight = .45; pipe.bloomKernel = 72; pipe.bloomScale = .5;
 pipe.grainEnabled = true; pipe.grain.intensity = 6; pipe.grain.animated = true;
@@ -395,7 +405,7 @@ ip.exposure = 1.3; ip.contrast = 1.25;
 ip.vignetteEnabled = true; ip.vignetteWeight = 1.6; ip.vignetteColor = new B.Color4(0, 0, 0, 0); ip.vignetteCameraFov = 1;
 
 const ssao = new B.SSAO2RenderingPipeline('ssao', scene, { ssaoRatio: .5, blurRatio: 1 }, [camera]);
-ssao.radius = 1.4; ssao.totalStrength = 1.15; ssao.samples = 16; ssao.maxZ = 120; ssao.minZAspect = .3;
+ssao.radius = 1.4; ssao.totalStrength = 1.15; ssao.samples = 8; ssao.maxZ = 120; ssao.minZAspect = .3;
 
 const fps = document.getElementById('fps');
 let frames = 0;

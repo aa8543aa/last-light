@@ -995,8 +995,7 @@ const updateBeast = () => {
 // 코인: 길을 따라 줄지어 놓이고, 장애물과 겹치면 건너뛴다.
 const coinMesh = B.MeshBuilder.CreateCylinder('coin', { diameter: .58, height: .07, tessellation: 24 }, scene);
 const coinMat = new B.StandardMaterial('coinM', scene);
-coinMat.diffuseColor = new B.Color3(.8, .56, .14); coinMat.emissiveColor = new B.Color3(.2, .125, .025);
-coinMat.specularColor = new B.Color3(.5, .42, .25); coinMat.specularPower = 48;
+coinMat.disableLighting = true; coinMat.emissiveColor = new B.Color3(.92, .68, .2);
 coinMesh.material = coinMat;
 const COIN_MAX = 60;
 coinMesh.buf = new Float32Array(COIN_MAX * 16);
@@ -1219,7 +1218,7 @@ const POSES = {
   seatLeg: { p: [.15, -.42, .72], r: [1.15, 0, 0] },
   fallArm: { p: [.66, -.42, .55], r: [.55, 0, -1.3] },
   fallLeg: { p: [.24, -.6, .8], r: [1.05, 0, -.2] },
-  skiArm: { p: [.62, -.56, .95], r: [1.18, 0, -.5] },
+  skiArm: { p: [.37, -.37, .6], r: [1.34, 0, -.04] },
   skiLeg: { p: [.16, -1.1, .15], r: [.25, 0, 0] },
   climbArm: { p: [.3, .02, .5], r: [.22, 0, -.12] },
   reachArm: { p: [.26, -.26, .62], r: [1.45, 0, .1] },
@@ -1243,12 +1242,17 @@ const updateBody = (dt, time) => {
     const pump = (S.speed || SPEED) / SPEED * 4.2;
     S.pump = (S.pump || 0) + pump * dt;
     arms.forEach((a, i) => {
-      const swing = Math.sin(S.pump + i * Math.PI);
-      setPart(a, bodyPose.arm, Math.min(1, dt * 14), 0);
-      a.mesh.position.z += swing * .1;
-      a.mesh.position.y += Math.max(0, swing) * .06;
-      a.mesh.rotation.x += swing * .3;
-      a.mesh.position.x += -S.v * .009;
+      // 지팡이 찍기: 앞으로 뻗은 손을 천천히 뒤로 끌어온 뒤, 살짝 들어 빠르게 앞으로 되돌린다.
+      const phase = ((S.pump + i * Math.PI) / (Math.PI * 2)) % 1;
+      const pulling = phase < .62;
+      const u = pulling ? phase / .62 : (phase - .62) / .38;
+      const reach = pulling ? .26 - smooth(0, 1, u) * .58 : -.32 + smooth(0, 1, u) * .58;
+      const lift = pulling ? -.02 * Math.sin(u * Math.PI) : .075 * Math.sin(u * Math.PI);
+      setPart(a, bodyPose.arm, 1, 0);
+      a.mesh.position.z += reach;
+      a.mesh.position.y += reach * .24 + lift;
+      a.mesh.position.x += -S.v * .009 - reach * a.side * .08;
+      if (poles[i]) poles[i].rotation.x = -.5 + (pulling ? reach * .95 : -.3 + reach * .35);
     });
     legs.forEach(l => setPart(l, POSES.hideLeg, 1, 0));
     skis.forEach(sk => {

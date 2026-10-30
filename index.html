@@ -64,7 +64,7 @@
     <div class="hp-bar"><i id="barSt" class="st"></i></div>
   </section>
   <section id="route" aria-label="진행도">
-    <div class="big"><span id="vDist">8.10</span><span class="unit">km</span></div>
+    <div class="big"><span id="vDist">3.00</span><span class="unit">km</span></div>
     <div class="label">민가까지 남은 거리</div>
     <div class="track"><div class="done" id="tDone"></div><div class="me" id="tMe"></div><div class="home"></div></div>
     <div class="ends label"><span>추락 지점</span><span>민가</span></div>
@@ -76,7 +76,6 @@
   </section>
   <section id="keys" aria-label="조작법">
     <span><kbd>A</kbd><kbd>D</kbd>또는 <kbd>←</kbd><kbd>→</kbd>좌우 이동</span>
-    <span><kbd>Shift</kbd>부스트</span>
     <span><kbd>Space</kbd>점프</span>
   </section>
 </div>
@@ -124,13 +123,13 @@ const surfaceY = (x, z) => {
 };
 
 const VILLAGE_Z = 230, VILLAGE_X = 46;
-const TOTAL = 8100, SPEED = 27;
+const TOTAL = 3000, SPEED = 43.2;
 let skyMesh, snowPs;
 const RING_YAW = 2.2;
 // 코스를 가로지르는 깊은 틈. 부스트하며 점프해야 건너간다.
 const GAP_LEN = 24, GAP_DEPTH = 70;
 const GAPS = [];
-for (let i = 0; i < 11; i++) { const z0 = 560 + i * 690 + Math.sin(i * 2.4) * 70; GAPS.push({ z0, end: z0 + GAP_LEN }); }
+for (let i = 0; i < 4; i++) { const z0 = 560 + i * 690 + Math.sin(i * 2.4) * 70; GAPS.push({ z0, end: z0 + GAP_LEN }); }
 const gapDepth = (x, z) => {
   for (const g of GAPS) {
     if (z < g.z0 - 7 || z > g.end + 7) continue;
@@ -714,8 +713,8 @@ ip.vignetteEnabled = true; ip.vignetteWeight = 1.6; ip.vignetteColor = new B.Col
 
 // 게임 상태
 const $ = id => document.getElementById(id);
-const JUMP_COST = 10, JUMP_POWER = 6.2, GRAVITY = 16, BOOST = 1.6;
-const S = { yaw: 0, pitch: 0, mode: 'intro', z: 0, u: 0, v: 0, t: 0, hp: 100, coins: 0, st: 100, y: 0, vy: 0, speed: SPEED, slow: 1, spent: false };
+const JUMP_COST = 10, JUMP_POWER = 6.2, GRAVITY = 16;
+const S = { yaw: 0, pitch: 0, mode: 'intro', z: 0, u: 0, v: 0, t: 0, hp: 100, coins: 0, st: 100, y: 0, vy: 0, speed: SPEED, slow: 1 };
 const keys = {};
 addEventListener('keydown', e => {
   keys[e.code] = true;
@@ -728,13 +727,9 @@ const cur = { pos: camera.position.clone(), look: camera.getTarget().clone(), ro
 
 const updateRun = dt => {
   S.t += dt;
-  // 부스트: 스테미나를 쓰며, 다 쓰면 어느 정도 찰 때까지 다시 못 쓴다.
-  if (S.st <= 0) S.spent = true;
-  if (S.st > 10) S.spent = false;
-  const boosting = (keys.ShiftLeft || keys.ShiftRight) && !S.spent;
-  S.st = clamp(S.st + (boosting ? -13 : 26) * dt, 0, 100);
+  S.st = clamp(S.st + 26 * dt, 0, 100);
   S.slow = Math.min(1, S.slow + dt * .5);
-  const want = SPEED * (boosting ? BOOST : 1) * S.slow * Math.min(1, .7 + S.t / 2.5);
+  const want = SPEED * S.slow * Math.min(1, .55 + S.t / 2);
   S.speed += (want - S.speed) * Math.min(1, dt * 5);
   S.z = Math.min(TOTAL, S.z + S.speed * dt);
   if (S.y > 0) {
@@ -787,7 +782,7 @@ const updateHud = () => {
   $('vTime').textContent = String(Math.floor(sec / 60)).padStart(2, '0') + ':' + String(sec % 60).padStart(2, '0');
   $('vHp').textContent = Math.ceil(S.hp);
   $('barSt').style.width = S.st + '%';
-  $('barSt').classList.toggle('low', S.spent);
+  $('barSt').classList.toggle('low', S.st < JUMP_COST);
   $('barHp').style.width = S.hp + '%';
   $('vCoin').textContent = S.coins;
   $('vScore').textContent = (Math.floor(S.t * 10) + S.coins * 50).toLocaleString();
@@ -834,14 +829,14 @@ const writeObstacles = () => {
   n.forEach((c, mesh) => { mesh.thinInstanceBufferUpdated('matrix'); mesh.thinInstanceCount = c; });
 };
 const spawnObstacles = () => {
-  while (nextObs < S.z + 230) {
+  while (nextObs < S.z + 300) {
     const free = clearOfGap(nextObs, 16, 14);
     if (free !== nextObs) { nextObs = free; continue; }
     const z = nextObs, half = pathHalf(z);
     obsCount++;
     if (obsCount % 4 === 0) {
       obs.push({ type: 'log', z, len: half * 2 + 3, tilt: rnd(-.06, .06), h: .62 });
-      nextObs += rnd(45, 60);
+      nextObs += rnd(75, 100);
       continue;
     }
     const gap = rnd(-half + 1.3, half - 1.3);
@@ -856,7 +851,7 @@ const spawnObstacles = () => {
         break;
       }
     }
-    nextObs += rnd(36, 56);
+    nextObs += rnd(60, 92);
   }
   writeObstacles();
 };
@@ -896,7 +891,7 @@ const updateObstacles = () => {
       if (o.type !== 'snag') { obs.splice(i, 1); changed = true; }
     }
   }
-  if (changed || nextObs < S.z + 230) spawnObstacles();
+  if (changed || nextObs < S.z + 300) spawnObstacles();
 };
 S.obs = obs;
 S.gaps = GAPS;
@@ -923,10 +918,10 @@ const buildBeast = (name, fur, size) => {
   return { root, legs, size };
 };
 const beasts = [buildBeast('wolf', [.09, .1, .12], 1), buildBeast('bear', [.055, .04, .03], 1.75)];
-let beast = null, nextBeast = 24;
+let beast = null, nextBeast = 12;
 const spawnBeast = kind => {
   const b = kind === undefined ? beasts[rnd() < .62 ? 0 : 1] : beasts[kind];
-  let z = clearOfGap(S.z + 105, 22, 14);
+  let z = clearOfGap(S.z + 170, 30, 16);
   for (let t = 0; t < 8 && obs.some(o => Math.abs(o.z - z) < 9); t++) z += 10;
   const half = pathHalf(z), x = pathX(z) + rnd(-1, 1) * (half - 1.3);
   beast = { b, z, x, hit: false, r: b.size > 1 ? 1.25 : .85, h: b.size > 1 ? .95 : .62 };
@@ -937,7 +932,7 @@ const spawnBeast = kind => {
 S.spawnBeast = spawnBeast;
 const updateBeast = () => {
   if (!beast) {
-    if (S.t > nextBeast) { spawnBeast(); nextBeast = S.t + rnd(28, 48); }
+    if (S.t > nextBeast) { spawnBeast(); nextBeast = S.t + rnd(14, 24); }
     return;
   }
   const b = beast, px = pathX(S.z) + S.u;
@@ -965,18 +960,18 @@ const coins = [];
 let nextCoin = 40;
 const coinBlocked = (x, z) => obs.some(o => o.type === 'log' ? Math.abs(o.z - z) < 2.5 : Math.abs(o.z - z) < 2.5 && Math.abs(o.x - x) < o.r + .8);
 const spawnCoins = () => {
-  while (nextCoin < S.z + 200 && coins.length < COIN_MAX - 10) {
+  while (nextCoin < S.z + 280 && coins.length < COIN_MAX - 10) {
     const start = clearOfGap(nextCoin, 14, 8), n = 5 + Math.floor(rnd(0, 5));
     let u = rnd(-.75, .75);
     const drift = rnd(-.09, .09);
     for (let i = 0; i < n; i++) {
-      const z = start + i * 5;
+      const z = start + i * 8;
       if (gapAt(z)) continue;
       const half = pathHalf(z) - .9, x = pathX(z) + clamp(u, -1, 1) * half;
       u += drift;
       if (!coinBlocked(x, z)) coins.push({ x, z });
     }
-    nextCoin = start + n * 5 + rnd(45, 90);
+    nextCoin = start + n * 8 + rnd(70, 130);
   }
 };
 const updateCoins = () => {
@@ -1030,7 +1025,7 @@ const updateKits = dt => {
     for (let t = 0; t < 10 && obs.some(o => o.z !== undefined && Math.abs(o.z - z) < 6); t++) z += 7;
     k.on = true; k.z = z; k.x = pathX(z) + rnd(-1, 1) * (pathHalf(z) - 1.1);
     k.mesh.setEnabled(true);
-    nextKit = z + rnd(450, 690);
+    nextKit = z + rnd(600, 850);
   }
   for (const k of kits) {
     if (!k.on) continue;
@@ -1056,7 +1051,7 @@ const startRun = () => {
   showVillage(false);
   S.mode = 'run'; S.v = 0; S.t = 0;
   $('skip').style.display = 'none';
-  nextObs = S.z + 75;
+  nextObs = S.z + 120;
   spawnObstacles();
   $('hud').classList.add('on');
 };

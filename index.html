@@ -119,14 +119,13 @@ const surfaceY = (x, z) => {
   const dx = x - pathX(z), d = Math.abs(dx);
   const hillside = Math.max(0, -dx - 5) * .42 - Math.max(0, dx - 5) * .3;
   return smooth(4, 10.5, d) * (1.1 + d * .05) + (fbm(x * .12, z * .12) - .5) * (.25 + smooth(3, 12, d) * 2.2)
-    + hillside - z * .09 + Math.sin(z * .013) * 7 - 7 * Math.sin(0);
+    + hillside - z * .09 + Math.sin(z * .013) * 7
+    + 26 * Math.exp(-(((x - VILLAGE_X) / 42) ** 2 + ((z - VILLAGE_Z) / 42) ** 2)) * smooth(8, 22, d);
 };
 
-const VILLAGE_Z = 170, VILLAGE_X = 34;
+const VILLAGE_Z = 230, VILLAGE_X = 46;
 const TOTAL = 8100, SPEED = 27;
 let skyMesh, snowPs;
-const glows = [];
-let village;
 const RING_YAW = 2.2;
 // 코스를 가로지르는 깊은 틈. 부스트하며 점프해야 건너간다.
 const GAP_LEN = 24, GAP_DEPTH = 70;
@@ -330,7 +329,7 @@ const plantField = (mesh, o) => {
       const side = rnd() < .5 ? -1 : 1;
       x = pathX(z) + side * (o.edge ? pathHalf(z) + rnd(o.dMin, o.dMax) : rnd(o.dMin, o.dMax));
       // 시작 지점에서 민가 불빛이 보이도록 처음 배치할 때만 시야를 비운다.
-      if (!first || z < 12 || z > VILLAGE_Z + 20 || Math.abs(x - VILLAGE_X * z / VILLAGE_Z) > 6 + z * .07) break;
+      if (!first || ((z < 12 || z > VILLAGE_Z + 40 || Math.abs(x - VILLAGE_X * z / VILLAGE_Z) > 6 + z * .07) && Math.hypot(x - VILLAGE_X, z - VILLAGE_Z) > 34)) break;
       z += 3;
     }
     it.z = z; it.x = x;
@@ -606,29 +605,53 @@ floorMat.disableLighting = true; floorMat.emissiveColor = new B.Color3(.085, .11
 const skyFloor = B.MeshBuilder.CreateDisc('skyFloor', { radius: RING_R + 20, tessellation: 48 }, scene);
 skyFloor.rotation.x = Math.PI / 2; skyFloor.material = floorMat;
 
-// 멀리 보이는 민가 불빛
-{
-  const size = 1024, tex = new B.DynamicTexture('village', size, scene, true), c = tex.getContext();
-  const g = c.createRadialGradient(512, 512, 0, 512, 512, 512);
-  g.addColorStop(0, 'rgba(255,160,80,.2)'); g.addColorStop(.3, 'rgba(255,130,60,.05)'); g.addColorStop(1, 'rgba(255,110,40,0)');
-  c.fillStyle = g; c.fillRect(0, 0, size, size);
-  for (let i = 0; i < 90; i++) {
-    const a = rnd(0, 6.28), d = rnd(0, 1) ** 1.6 * 150, r = rnd(1.2, 2.6);
-    const sp = c.createRadialGradient(0, 0, 0, 0, 0, r * 2.5);
-    c.save(); c.translate(512 + Math.cos(a) * d * 1.5, 512 + Math.sin(a) * d * .5);
-    sp.addColorStop(0, 'rgba(255,232,180,1)'); sp.addColorStop(.35, 'rgba(255,170,90,.7)'); sp.addColorStop(1, 'rgba(255,120,40,0)');
-    c.fillStyle = sp; c.fillRect(-r * 3, -r * 3, r * 6, r * 6); c.restore();
+// 민가: 지형 위에 놓인 집들. 창문의 불빛이 어둠 속에서 보인다.
+const roofMat = new B.StandardMaterial('roofM', scene);
+roofMat.disableLighting = true; roofMat.emissiveColor = new B.Color3(.13, .16, .23); roofMat.fogEnabled = false;
+const wallDark = new B.StandardMaterial('houseM', scene);
+wallDark.disableLighting = true; wallDark.emissiveColor = new B.Color3(.018, .016, .017); wallDark.fogEnabled = false;
+const windowMat = new B.StandardMaterial('windowM', scene);
+windowMat.disableLighting = true; windowMat.emissiveColor = new B.Color3(1, .68, .32); windowMat.fogEnabled = false;
+const haloTex = (() => {
+  const t = new B.DynamicTexture('halo', 128, scene, true), c = t.getContext(), g = c.createRadialGradient(64, 64, 0, 64, 64, 64);
+  g.addColorStop(0, 'rgba(255,170,90,.55)'); g.addColorStop(.35, 'rgba(255,130,60,.14)'); g.addColorStop(1, 'rgba(255,110,40,0)');
+  c.fillStyle = g; c.fillRect(0, 0, 128, 128); t.update(false); t.hasAlpha = true;
+  return t;
+})();
+const haloMat = new B.StandardMaterial('haloM', scene);
+haloMat.emissiveTexture = haloTex; haloMat.opacityTexture = haloTex; haloMat.disableLighting = true; haloMat.fogEnabled = false;
+haloMat.alphaMode = B.Engine.ALPHA_ADD; haloMat.backFaceCulling = false;
+const houses = [];
+for (let i = 0; i < 16; i++) {
+  const root = new B.TransformNode('house', scene);
+  const w = rnd(4, 7), d = rnd(5, 8), h = rnd(2.6, 3.6);
+  const body = B.MeshBuilder.CreateBox('houseBody', { width: w, height: h, depth: d }, scene);
+  body.material = wallDark; body.parent = root; body.position.y = h / 2;
+  const roof = B.MeshBuilder.CreateCylinder('houseRoof', { diameter: w * 1.32, height: d * 1.1, tessellation: 3 }, scene);
+  roof.material = roofMat; roof.parent = root; roof.rotation.set(Math.PI / 2, 0, Math.PI / 6 * 3); roof.position.y = h + w * .22;
+  for (let k = 0; k < 2; k++) {
+    const lit = rnd() < .8;
+    if (!lit) continue;
+    const win = B.MeshBuilder.CreateBox('houseWin', { width: .9, height: 1, depth: .08 }, scene);
+    win.material = windowMat; win.parent = root; win.position.set((k ? 1 : -1) * w * .24, h * .55, -d / 2 - .05);
   }
-  tex.update(false); tex.hasAlpha = true;
-  const m = new B.StandardMaterial('villageM', scene);
-  m.emissiveTexture = tex; m.opacityTexture = tex; m.disableLighting = true; m.fogEnabled = false;
-  m.alphaMode = B.Engine.ALPHA_ADD; m.backFaceCulling = false;
-  const gl = B.MeshBuilder.CreatePlane('village', { size: 26 }, scene);
-  gl.billboardMode = B.Mesh.BILLBOARDMODE_ALL;
-  gl.material = m;
-  glows.push({ mesh: gl, dx: 0, dy: 0 });
-  village = glows[0];
+  const halo = B.MeshBuilder.CreatePlane('houseHalo', { size: 11 }, scene);
+  halo.material = haloMat; halo.parent = root; halo.position.set(0, h * .55, -d / 2 - .4);
+  halo.billboardMode = B.Mesh.BILLBOARDMODE_ALL;
+  houses.push({ root, off: new B.Vector2(0, 0) });
+  const a = rnd(0, 6.28), rad = Math.sqrt(rnd(.03, 1));
+  houses[i].off.set(Math.cos(a) * rad, Math.sin(a) * rad);
 }
+const placeVillage = (cx, cz, spread) => {
+  for (const k of houses) {
+    const x = cx + k.off.x * spread, z = cz + k.off.y * spread * .75;
+    k.root.position.set(x, groundY(x, z) - .25, z);
+    k.root.rotation.y = rnd(-.45, .45);
+    k.root.setEnabled(true);
+  }
+};
+const showVillage = on => houses.forEach(k => k.root.setEnabled(on));
+placeVillage(VILLAGE_X, VILLAGE_Z, 26);
 
 // 내리는 눈
 {
@@ -736,6 +759,7 @@ const updateRun = dt => {
   updateBeast();
   updateKits(dt);
   updateCoins();
+  if (!S.villageNear && S.z > TOTAL - 520) { S.villageNear = true; placeVillage(pathX(TOTAL + 55), TOTAL + 55, 24); }
   if (S.z >= TOTAL && S.mode === 'run') finish(true);
 };
 
@@ -1029,6 +1053,7 @@ addEventListener('mousemove', e => {
 });
 
 const startRun = () => {
+  showVillage(false);
   S.mode = 'run'; S.v = 0; S.t = 0;
   $('skip').style.display = 'none';
   nextObs = S.z + 75;
@@ -1332,7 +1357,7 @@ const introBreak = async () => {
 
 const setAir = on => {
   S.air = on;
-  glows.forEach(g => g.mesh.setEnabled(!on));
+  showVillage(!on);
   chunks.forEach(m => m.setEnabled(!on));
   scene.fogDensity = on ? 0 : .013;
   camera.maxZ = 2000;
@@ -1435,20 +1460,15 @@ const introDiscover = async () => {
   bodyPose.arm = POSES.hideArm;
   // 일어나 멀리 눈을 돌리면 산자락에 불빛이 보인다.
   standAt(landX, 2.2); pose.rate = .55; pose.roll = 0;
-  const vx = cur.pos.x + 34.2, vz = VILLAGE_Z + 2;
-  lookAt(vx, cur.pos.y - 5, vz);
-  village.mesh.renderingGroupId = 1;
+  lookAt(VILLAGE_X, groundY(VILLAGE_X, VILLAGE_Z) + 3, VILLAGE_Z);
   await hold(3.4);
   // 불빛을 알아보고 시선이 고정된다.
   await play(3.2, u => {
     camera.fov = 1 - smooth(0, 1, u) * .62;
-    village.mesh.scaling.setAll(1 + smooth(0, 1, u) * .15);
   });
   await hold(2.6);
   await play(1.4, u => { camera.fov = .38 + smooth(0, 1, u) * .62; });
   camera.fov = 1;
-  village.mesh.renderingGroupId = 0;
-  village.mesh.scaling.setAll(1);
 };
 
 // 잔해를 모아 엉성한 스키를 묶고, 묶는 순간 바로 출발한다.
@@ -1542,7 +1562,6 @@ const runIntro = async () => {
 const jumpToRun = () => {
   anim = null; pose.on = false; pose.shake = 0;
   canvas.style.filter = 'none';
-  village.mesh.renderingGroupId = 0; village.mesh.scaling.setAll(1);
   chasers.forEach(c => c.root.setEnabled(false));
   setAir(false);
   gift.setEnabled(false); giftWreck.setEnabled(false);
@@ -1610,7 +1629,6 @@ engine.runRenderLoop(() => {
   skyShader.setFloat('pixel', 2 * Math.tan(camera.fov / 2) / engine.getRenderHeight());
   ring.position.set(cur.pos.x, cur.pos.y + RING_H * .22 - (S.air ? 118 : 0), cur.pos.z);
   skyFloor.position.set(cur.pos.x, ring.position.y - RING_H * .36, cur.pos.z);
-  for (const g of glows) g.mesh.position.set(cur.pos.x + 34.2, cur.pos.y - 5, cur.pos.z + VILLAGE_Z);
   updateHud();
   finishBake();
   adaptResolution(dt);

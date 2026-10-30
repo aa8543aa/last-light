@@ -84,7 +84,7 @@
 
 - [x] 저장소 생성 및 PRD 작성
 - [x] 새 기획으로 PRD와 Todo 수정
-- [x] 배경 렌더 테스트 작성 ([concept/index.html](concept/index.html))
+- [x] 배경 렌더 테스트 작성 ([prototype/index.html](prototype/index.html))
 - [x] HUD 디자인
 - [x] 렌더 테스트 개선 (민가 불빛, 상고대, 성능)
 - [x] 프로젝트 전용 스킬 작성

@@ -8,7 +8,7 @@
 
 비행기 사고로 고도가 높은 산에 조난당한 주인공이 잔해로 스키를 만들어 마을까지 내려갑니다. 어두운 숲길에서 나무와 돌을 피하거나 파괴하며 달리고, 약 5분 뒤 민가에 도착하면 끝납니다.
 
-- 실행 방법: [GitHub Pages에서 플레이](https://aa8543aa.github.io/realistic-combat-web/) 또는 `index.html`을 브라우저로 열기 (인터넷 연결 필요)
+- 실행 방법: [GitHub Pages에서 플레이](https://aa8543aa.github.io/last-light/) 또는 `index.html`을 브라우저로 열기 (인터넷 연결 필요)
 - 조작법: `A`/`D` 또는 `←`/`→`로 좌우 이동, `Shift` 부스트, `Space` 점프, 마우스로 주변 보기 (화면 클릭 시 포인터 잠금)
 - 에셋 출처: 하늘은 [Milky Way at Chajnantor](https://commons.wikimedia.org/wiki/File:Milky_Way_at_Chajnantor_(uhd_9428_panorama_eq).jpg) (Y. Beletsky (LCO)/ESO, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0)), 산은 [Kanchenjungha-Panorama](https://commons.wikimedia.org/wiki/File:Kanchenjungha-Panorama.jpg) (Sujay25, [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0))를 사용함. 하늘은 위쪽만 잘랐고, 산은 하늘을 지우고 밤 색으로 보정함. 눈 지면은 [Poly Haven Snow 02](https://polyhaven.com/a/snow_02) (Rob Tuytel, CC0). 나무와 바위는 코드로 생성함
 
@@ -106,7 +106,7 @@
 
 ### 변경 내역
 
-처음 계획과 달라진 부분을 작업 중에 기록합니다. 처음 계획은 [첫 커밋](https://github.com/aa8543aa/realistic-combat-web/commit/3547514)에서 볼 수 있습니다.
+처음 계획과 달라진 부분을 작업 중에 기록합니다. 처음 계획은 [첫 커밋](https://github.com/aa8543aa/last-light/commit/3547514)에서 볼 수 있습니다.
 
 | 날짜 | 구분 | 처음 계획 | 변경 후 | 이유 |
 | --- | --- | --- | --- | --- |
@@ -144,6 +144,7 @@
 | 2026-10-30 | 수정 | 곰과 늑대가 뛰어올라 덮침 | 뛰지 않고 위치만 따라오며, 점프 중이면 지나감 | 플레이 테스트에서 늑대를 피할 수 없었음 |
 | 2026-10-30 | 수정 | 곰과 늑대가 플레이어를 따라옴 | 길 위 한 곳에 서 있어 옆으로 피하거나 뛰어넘음 | 재테스트에서도 피할 수 없었음 |
 | 2026-10-30 | 수정 | 게임 제목 불빛을 향해 | 마지막 불빛 | 제목 변경 요청 |
+| 2026-10-30 | 수정 | 저장소와 주소 realistic-combat-web | last-light | 게임 내용과 맞지 않는 이름을 바꿈 |
 | 2026-10-30 | 수정 | 평지에 그린 검은 크레바스 | 지형을 약 70m 깎은 낭떠러지, 빠지면 추락 장면 후 건너편에서 재개 | 빈 공간이 사실적이지 않았음 |
 | 2026-10-30 | 수정 | 코드로 만든 눈 지면과 빠르게 스치는 눈 | 실제 눈 촬영 재질과 천천히 내리는 큰 눈송이 추가 | 눈이 내리는 느낌이 약하고 지면이 평평해 보임 |
 | 2026-10-30 | 추가 | 상고대 활엽수만 있는 숲 | 눈 쌓인 가문비나무를 섞은 숲 | 겨울 산의 실제 숲 구성에 가깝게 함 |

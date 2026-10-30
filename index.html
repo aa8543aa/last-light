@@ -603,7 +603,18 @@ const cabinBox = (w, h, d, x, y, z, mat) => {
   return m;
 };
 cabinBox(.08, 2.4, 22, -1.9, 0, 8, wallMat);
-cabinBox(.08, 2.4, 22, 1.9, 0, 8, wallMat);
+// 오른쪽 벽: 내 자리 옆 창문은 뚫려 있어 바깥 산맥이 실제로 보인다.
+const HOLES = [.35, 1.4, 2.45], HOLE_W = .4, HOLE_H = .52, HOLE_Y = .12;
+cabinBox(.08, 1.2 - HOLE_H / 2 + HOLE_Y, 22, 1.9, (-1.2 + HOLE_Y - HOLE_H / 2) / 2, 8, wallMat);
+cabinBox(.08, 1.2 - HOLE_Y - HOLE_H / 2, 22, 1.9, (1.2 + HOLE_Y + HOLE_H / 2) / 2, 8, wallMat);
+{
+  let z0 = -3;
+  for (const h of [...HOLES, 21.2]) {
+    const z1 = h - HOLE_W / 2;
+    cabinBox(.08, HOLE_H, z1 - z0, 1.9, HOLE_Y, (z0 + z1) / 2, wallMat);
+    z0 = h + HOLE_W / 2;
+  }
+}
 cabinBox(3.9, .08, 22, 0, -1.2, 8, seatMat);
 cabinBox(3.9, .08, 22, 0, 1.2, 8, wallMat);
 cabinBox(3.9, 2.4, .08, 0, 0, 19, wallMat);
@@ -616,20 +627,11 @@ for (let z = -1; z < 18; z += 1.05) {
     cabinBox(.4, .2, .1, x, -.04, z, seatMat);
   }
   cabinBox(.03, .36, .26, -1.86, .15, z, winMat);
-  cabinBox(.03, .36, .26, 1.86, .15, z, winMat);
+  if (z > 3) cabinBox(.03, .36, .26, 1.86, .15, z, winMat);
 }
 
-// 비행기 파편: 추락하는 동안 카메라 주변을 함께 떨어진다.
 const metal = lit('metal', .3, .31, .34, .5);
 metal.metallic = .7;
-const debris = [];
-for (let i = 0; i < 12; i++) {
-  const m = B.MeshBuilder.CreateBox('debris', { width: rnd(.3, 1.6), height: rnd(.03, .3), depth: rnd(.3, 2) }, scene);
-  m.material = metal; m.setEnabled(false);
-  const dir = new B.Vector3(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)).normalize();
-  debris.push({ m, o: dir.scale(rnd(7, 24)), spin: new B.Vector3(rnd(-3, 3), rnd(-3, 3), rnd(-3, 3)) });
-}
-
 const fireTex = (() => {
   const t = new B.DynamicTexture('fire', 64, scene, true), c = t.getContext(), g = c.createRadialGradient(32, 32, 0, 32, 32, 32);
   g.addColorStop(0, 'rgba(255,240,200,1)'); g.addColorStop(.35, 'rgba(255,140,50,.7)'); g.addColorStop(1, 'rgba(120,30,0,0)');
@@ -670,7 +672,7 @@ const updateIntro = dt => {
   }
 };
 
-const seatPos = new B.Vector3(.65, CABIN_Y + .15, 1.35);
+const seatPos = new B.Vector3(1.25, CABIN_Y + .15, 1.35);
 const landX = pathX(0), landY = groundY(landX, 0);
 
 // 승객, 무릎 위 선물, 산소마스크: 말 없이 상황을 보여 주는 소품이다.
@@ -686,9 +688,9 @@ for (let z = 2.15; z < 18; z += 1.05) for (const x of [-1.25, -.65, .65, 1.25]) 
   cabinSphere(.21, x + rnd(-.04, .04), rnd(.03, .11), z + .16, hairMats[Math.floor(rnd(0, 3))], 1.12);
 }
 // 창가에 기대 잠든 옆자리 승객
-cabinSphere(.42, 1.25, -.34, 1.34, shirtMat, 1.5);
-cabinSphere(.2, 1.42, .03, 1.38, skinMat, 1.12);
-cabinSphere(.21, 1.44, .07, 1.33, hairMats[1], 1.05);
+cabinSphere(.42, .65, -.34, 1.34, shirtMat, 1.5);
+cabinSphere(.2, .5, .02, 1.38, skinMat, 1.12);
+cabinSphere(.21, .48, .06, 1.33, hairMats[1], 1.05);
 const masks = [];
 for (let z = 1.9; z < 9; z += 1.05) for (const x of [-.95, .95]) {
   const m = cabinBox(.13, .09, .13, x, 1.12, z, flat('mask' + masks.length, .85, .68, .14));
@@ -698,7 +700,7 @@ for (let z = 1.9; z < 9; z += 1.05) for (const x of [-.95, .95]) {
 }
 const gift = B.MeshBuilder.CreateBox('gift', { width: .24, height: .13, depth: .19 }, scene);
 gift.material = flat('giftM', .42, .03, .04);
-gift.parent = camera; gift.position.set(0, -.235, .5); gift.rotation.x = .25;
+gift.position.set(1.25, CABIN_Y - .3, 1.78); gift.rotation.x = .2;
 const ribbon = B.MeshBuilder.CreateBox('ribbon', { width: .03, height: .135, depth: .195 }, scene);
 ribbon.material = flat('ribbonM', .85, .68, .25);
 ribbon.parent = gift;
@@ -710,15 +712,25 @@ const introCabin = async () => {
   pose.on = true; pose.rate = 1.5;
   cur.pos.copyFrom(seatPos);
   pose.pos.copyFrom(seatPos);
-  cur.look.set(.6, CABIN_Y - 1.75, 3);
+  cur.look.set(1.2, CABIN_Y - 1.75, 3);
   pose.look.copyFrom(cur.look);
   $('fade').style.opacity = 0;
-  // 무릎 위 선물을 내려다보다가, 잠든 옆 사람과 창밖을 보고, 앞을 본다.
-  await hold(3.4);
-  pose.look.set(2.4, CABIN_Y + .1, 1.75);
-  await hold(3.2);
-  pose.look.set(.5, CABIN_Y - .5, 9);
-  await hold(2.2);
+  const fly = (u, dt) => { air.position.z -= 70 * dt; };
+  // 무릎 위 선물을 내려다본다.
+  await play(3, fly);
+  // 창에 다가가 끝없이 이어진 설산을 내려다본다.
+  pose.rate = 1.1;
+  bodyPose.arm = POSES.hideArm; bodyPose.leg = POSES.hideLeg; bodyPose.rate = 2;
+  pose.pos.set(1.56, CABIN_Y + .17, 1.38);
+  pose.look.set(5.2, CABIN_Y - 1.1, 2.1);
+  await play(7, fly);
+  // 자리로 돌아와 잠든 옆 사람을 본다.
+  bodyPose.arm = POSES.seatArm; bodyPose.leg = POSES.seatLeg;
+  pose.pos.copyFrom(seatPos);
+  pose.look.set(-.6, CABIN_Y - .25, 1.85);
+  await play(2.6, fly);
+  pose.look.set(1, CABIN_Y - .5, 9);
+  await play(2, fly);
   // 난기류: 불이 깜빡이고 산소마스크가 떨어진다.
   wallMat.emissiveColor.set(.5, .12, .09);
   stripMat.emissiveColor.set(1, .15, .1);
@@ -741,7 +753,7 @@ const introCabin = async () => {
 // 좌석에 앉은 채로 기체가 내 주변에서 조각나 날아간다.
 const introBreak = async () => {
   $('flash').style.opacity = .8;
-  const parts = cabin.getChildMeshes().filter(m => !(m.position.x > 0 && m.position.x < 1 && Math.abs(m.position.z - 1.1) < .4));
+  const parts = cabin.getChildMeshes().filter(m => !(m.position.x > 1 && m.position.x < 1.5 && Math.abs(m.position.z - 1.1) < .4));
   parts.forEach(m => {
     const out = new B.Vector3(m.position.x, m.position.y - CABIN_Y, 0);
     m.vel = out.scale(rnd(3, 9)).addInPlaceFromFloats(rnd(-2, 2), rnd(-2, 3), rnd(-34, -8) * (m.position.z > 2 ? 1 : .3));
@@ -750,15 +762,20 @@ const introBreak = async () => {
   burst(new B.Vector3(0, CABIN_Y, 7), 700, new B.Color4(1, .75, .35, 1), new B.Color4(1, .3, .05, .8), 3.5, 16, fireTex);
   cur.look.set(.5, CABIN_Y + .4, 8);
   bodyPose.arm = POSES.fallArm;
-  await play(2.1, (u, dt) => {
-    $('flash').style.opacity = Math.max(0, .8 - u * 5);
-    cur.pos.set(seatPos.x + rnd(-.05, .05), seatPos.y + rnd(-.05, .05) - u * u * 2, seatPos.z);
+  await play(.9, (u, dt) => {
+    $('flash').style.opacity = Math.max(0, .8 - u * 1.2);
+    cur.pos.set(seatPos.x + rnd(-.07, .07), seatPos.y + rnd(-.07, .07), seatPos.z);
     cur.roll = Math.sin(u * 13) * .25 * u;
     parts.forEach(m => {
       m.position.addInPlaceFromFloats(m.vel.x * dt, m.vel.y * dt, m.vel.z * dt);
       m.rotation.addInPlaceFromFloats(m.spin.x * dt, m.spin.y * dt, m.spin.z * dt);
     });
   });
+  $('fade').style.transition = 'none';
+  $('fade').style.opacity = 1;
+  $('flash').style.opacity = 0;
+  cabin.setEnabled(false);
+  legs.forEach(l => l.boot.setEnabled(true));
 };
 
 // 10km 상공 배경: 별하늘과 멀리 아래 깔린 구름층
@@ -857,13 +874,6 @@ const air = new B.TransformNode('air', scene);
   cloudLayer('cloudB', DECK + 1320, 6, .42, 40);
 }
 air.setEnabled(false);
-const fireball = B.MeshBuilder.CreatePlane('fireball', { size: 1 }, scene);
-{
-  const m = new B.StandardMaterial('fbM', scene);
-  m.emissiveTexture = fireTex; m.opacityTexture = fireTex; m.disableLighting = true; m.fogEnabled = false;
-  m.alphaMode = B.Engine.ALPHA_ADD; m.backFaceCulling = false;
-  fireball.material = m; fireball.billboardMode = B.Mesh.BILLBOARDMODE_ALL; fireball.setEnabled(false);
-}
 const setAir = on => {
   air.setEnabled(on);
   skyMesh.setEnabled(!on);
@@ -872,32 +882,6 @@ const setAir = on => {
   scene.fogDensity = on ? .00013 : .013;
   camera.maxZ = on ? 20000 : 900;
   if (on) snowPs.stop(); else snowPs.start();
-};
-
-// 폭발로 튕겨 나가 회전하며 멀어지고, 떨어지는 도중 의식을 잃는다.
-const introEject = async () => {
-  cabin.setEnabled(false);
-  debris.forEach(d => d.m.setEnabled(true));
-  fireball.setEnabled(true);
-  fireball.position.set(0, CABIN_Y + 4, 10);
-  fireball.scaling.setAll(46);
-  bodyPose.arm = POSES.fallArm; bodyPose.leg = POSES.fallLeg;
-  const from = cur.pos.clone();
-  let faded = false;
-  await play(9.5, (u, dt) => {
-    cur.pos.set(from.x + u * 18, from.y - u * 80 - u * u * 700, from.z - u * 1000);
-    const a = Math.PI + u * 6, b = Math.sin(u * 5) * .35 - .55;
-    cur.look.set(cur.pos.x + Math.sin(a) * Math.cos(b), cur.pos.y + Math.sin(b), cur.pos.z + Math.cos(a) * Math.cos(b));
-    cur.roll = Math.sin(u * 5) * 1.1;
-    fireball.scaling.setAll(46 + u * 90);
-    for (const d of debris) {
-      d.m.position.copyFrom(cur.pos).addInPlace(d.o).addInPlaceFromFloats(0, u * 14, -u * 26);
-      d.m.rotation.addInPlaceFromFloats(d.spin.x * dt, d.spin.y * dt, d.spin.z * dt);
-    }
-    if (u > .72 && !faded) { faded = true; $('fade').style.opacity = 1; }
-  });
-  debris.forEach(d => d.m.setEnabled(false));
-  fireball.setEnabled(false);
 };
 
 // 지상 소품: 추락한 잔해와 재료
@@ -976,7 +960,7 @@ const introDiscover = async () => {
   lookAt(landX - .55, landY - .3, 3.1); pose.rate = 1.8; standAt(landX - .3, 1.8, 1); await hold(1.8);
   bodyPose.arm = POSES.reachArm; await hold(1);
   giftWreck.setEnabled(false);
-  gift.setEnabled(true); gift.position.set(0, -.3, .55);
+  gift.setEnabled(true); gift.parent = camera; gift.position.set(0, -.3, .55);
   bodyPose.arm = POSES.seatArm; await hold(1.7);
   gift.setEnabled(false);
   bodyPose.arm = POSES.hideArm;
@@ -1022,8 +1006,7 @@ const introCraft = async () => {
 const runIntro = async () => {
   await introCabin();
   await introBreak();
-  await introEject();
-  await hold(1.5);
+  await hold(3);
   setAir(false);
   lantern.setEnabled(false);
   await introWake();

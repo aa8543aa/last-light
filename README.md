@@ -10,7 +10,7 @@
 
 ![달리는 장면](docs/images/run.jpg)
 
-- 실행 방법: [GitHub Pages에서 플레이](https://aa8543aa.github.io/last-light/) 또는 `index.html`을 브라우저로 열기 (인터넷 연결 필요)
+- 실행 방법: [GitHub Pages에서 플레이](https://aa8543aa.github.io/last-light/) 또는 `index.html`을 내려받아 브라우저로 열기 (인터넷 불필요)
 - 조작법: `A`/`D` 또는 `←`/`→`로 좌우 이동, `Space` 점프, 마우스를 움직여 주변 보기 (커서를 위로 올리면 하늘)
 - 에셋 출처: 하늘은 사진 없이 셰이더로 직접 그림. 산은 [Kanchenjungha-Panorama](https://commons.wikimedia.org/wiki/File:Kanchenjungha-Panorama.jpg) (Sujay25, [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0))를 사용함. 산은 하늘을 지우고 밤 색으로 보정함. 눈 지면은 [Poly Haven Snow 02](https://polyhaven.com/a/snow_02) (Rob Tuytel, CC0). 나무는 [Poly Haven Fir Tree 01](https://polyhaven.com/a/fir_tree_01), [Fir Sapling Medium](https://polyhaven.com/a/fir_sapling_medium) (Rob Tuytel, Rico Cilliers, CC0)에 눈과 달빛을 입혀 이미지로 제작함. 바위 재질은 [Poly Haven Rock Boulder Cracked](https://polyhaven.com/a/rock_boulder_cracked) (Dario Barresi, Dimitrios Savva, CC0), 바위 형태는 코드로 생성함. 스키 판자 재질은 [Poly Haven Weathered Planks](https://polyhaven.com/a/weathered_planks) (Dario Barresi, Dimitrios Savva, CC0)
 
@@ -20,7 +20,7 @@
 
 ### 폴더 구조
 
-- `index.html`: 게임 전체. 이미지까지 내장한 파일 하나로 실행됨
+- `index.html`: 게임 전체. 엔진과 이미지까지 내장한 파일 하나로 실행됨
 - `tools/`: 나무 이미지 카드를 만드는 도구
 - `prototype/`: 초기 배경 렌더 테스트
 - `docs/images/`: README 스크린샷
@@ -69,8 +69,8 @@
 
 ### 기술 스택
 
-- 렌더링: Babylon.js
-- 구조: 빌드 없이 HTML 파일과 CDN 스크립트만 사용
+- 렌더링: Babylon.js 7.54.3 (Apache-2.0)
+- 구조: 빌드 없이 엔진과 이미지까지 내장한 HTML 파일 하나로 실행
 - 에셋: 라이선스를 확인한 사진과 CC0 재질, 모델. 하늘과 사운드는 코드로 생성
 - 배포: GitHub Pages에 HTML을 그대로 올림
 
@@ -126,6 +126,7 @@
 - [x] 팔을 어깨까지 잇고 지팡이 찍는 동작으로 변경
 - [x] 사운드와 크리스마스 연출 추가
 - [x] 1차 최적화 (전후 수치는 변경 내역 참고)
+- [x] 엔진을 HTML에 내장해 인터넷 없이 실행
 - [x] 완성본 플레이 확인 (최종 FPS 측정은 플레이 확인으로 대체)
 - [x] 플레이 테스트 후 난이도 조정 (스테미나, 속도, 동물, 코스 길이)
 - [x] README 마무리
@@ -197,6 +198,7 @@
 | 2026-10-30 | 추가 | 도착 즉시 결과 화면 | 속도를 줄여 마을 앞에 멈추고, 불 켜진 크리스마스트리를 본 뒤 결과 표시 | 조난에서 마을 도착으로 이어지는 마무리를 위함 |
 | 2026-10-30 | 수정 | 사운드 에셋 사용 검토 | 파일 없이 합성한 바람, 스키, 기내, 코인, 점프, 충돌, 폭발 소리 | HTML 파일 하나로 유지하기 위함 |
 | 2026-10-30 | 수정 | 게임 완성 후 최종 FPS 측정 | 작성자의 플레이 확인으로 대체 | 도착 연출과 사운드 추가 후의 FPS는 재지 못함. 그 직전 측정값은 60 FPS |
+| 2026-10-30 | 수정 | CDN에서 엔진 로드 | 엔진을 HTML에 내장, 파일 약 10.8MB | 인터넷이나 CDN 상태와 상관없이 실행되도록 함 |
 | 2026-10-30 | 추가 | 스키를 묶으면 바로 조작 시작 | 미끄러지다 뒤돌아보면 늑대 무리가 쫓아오는 장면 후 조작 시작 | 도입부의 긴장감을 높이기 위함 |
 | 2026-10-30 | 추가 | 없음 | 체력 30을 회복하는 키트 | 장애물과 동물로 줄어든 체력을 회복하기 위함 |
 | 2026-10-30 | 수정 | 하늘과 산 이미지 3840px | 원본에서 하늘은 시점 범위 8192px, 산은 7680px로 다시 제작 | 플레이 테스트에서 해상도가 낮게 보임. 파일 크기는 커짐 |
@@ -315,7 +317,7 @@ Todo 항목 하나를 아래 순서로 끝낸 뒤 다음 항목으로 넘어간�
 
 ## 2. 구현
 
-- 빌드 도구 없이 HTML 파일과 CDN 스크립트만 사용한다.
+- 빌드 도구 없이 엔진까지 내장한 HTML 파일 하나로 실행되게 한다.
 - PRD에 없는 기능을 추가하거나 계획을 바꾸면 변경 내역에 남긴다.
 
 ## 3. 검증
